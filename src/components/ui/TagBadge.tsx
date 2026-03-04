@@ -32,7 +32,7 @@ export function TagBadge({ slug, aiTagged }: { slug: string; aiTagged?: boolean 
         border: `1px solid ${tag.color}40`,
       }}
     >
-      {aiTagged ? "[AI] " : "[KW] "}{tag.label}
+      {tag.label}
     </span>
   );
 }

@@ -20,3 +20,7 @@ export function getCached<T>(key: string): T | null {
 export function setCache<T>(key: string, data: T, ttl = DEFAULT_TTL): void {
   store.set(key, { data, expiresAt: Date.now() + ttl });
 }
+
+export function clearCache(): void {
+  store.clear();
+}

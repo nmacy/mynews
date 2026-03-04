@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
-import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
@@ -31,7 +30,6 @@ export function ArticleCard({ article }: { article: Article }) {
       </div>
       <div className="p-4">
         <div className="flex items-center gap-2 mb-2">
-          <CategoryBadge slug={article.categories[0]} />
           {article.paywalled && <PaywallBadge />}
           <span
             role="link"

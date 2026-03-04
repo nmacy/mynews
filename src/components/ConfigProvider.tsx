@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import type { Category, Source, UserConfig } from "@/types";
+import type { Source, UserConfig } from "@/types";
 import defaultConfig from "@/config/sources.json";
+import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
 
 const STORAGE_KEY = "mynews-config";
 const DISABLED_KEY = "mynews-disabled-sources";
@@ -14,13 +15,13 @@ interface ConfigContextValue {
   allSources: Source[];
   /** Set of disabled source IDs */
   disabledSourceIds: Set<string>;
-  addCategory: (category: Category) => void;
-  removeCategory: (slug: string) => void;
+  /** Resolved featured tags (user's list or defaults) */
+  featuredTags: string[];
   addSource: (source: Source) => void;
   removeSource: (id: string) => void;
   toggleSource: (id: string) => void;
   togglePaywall: (id: string) => void;
-  toggleSourceCategory: (sourceId: string, categorySlug: string) => void;
+  setFeaturedTags: (slugs: string[]) => void;
   resetToDefaults: () => void;
 }
 
@@ -38,11 +39,6 @@ function loadConfig(): UserConfig {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as UserConfig;
-      if (!parsed.categories.find((c) => c.slug === "top-stories")) {
-        parsed.categories.unshift(
-          defaultConfig.categories.find((c) => c.slug === "top-stories")! as Category
-        );
-      }
       return parsed;
     }
   } catch {
@@ -98,27 +94,6 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const addCategory = useCallback(
-    (category: Category) => {
-      persist({ ...config, categories: [...config.categories, category] });
-    },
-    [config, persist]
-  );
-
-  const removeCategory = useCallback(
-    (slug: string) => {
-      if (slug === "top-stories") return;
-      persist({
-        categories: config.categories.filter((c) => c.slug !== slug),
-        sources: config.sources.map((s) => ({
-          ...s,
-          categories: s.categories.filter((c) => c !== slug),
-        })),
-      });
-    },
-    [config, persist]
-  );
-
   const addSource = useCallback(
     (source: Source) => {
       persist({ ...config, sources: [...config.sources, source] });
@@ -161,21 +136,9 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     [config, persist]
   );
 
-  const toggleSourceCategory = useCallback(
-    (sourceId: string, categorySlug: string) => {
-      persist({
-        ...config,
-        sources: config.sources.map((s) => {
-          if (s.id !== sourceId) return s;
-          const has = s.categories.includes(categorySlug);
-          return {
-            ...s,
-            categories: has
-              ? s.categories.filter((c) => c !== categorySlug)
-              : [...s.categories, categorySlug],
-          };
-        }),
-      });
+  const setFeaturedTags = useCallback(
+    (slugs: string[]) => {
+      persist({ ...config, featuredTags: slugs });
     },
     [config, persist]
   );
@@ -191,7 +154,6 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   const effectiveConfig: UserConfig = mounted
     ? {
-        categories: config.categories,
         sources: config.sources.filter((s) => !disabledSources.has(s.id)),
       }
     : (defaultConfig as UserConfig);
@@ -202,13 +164,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         config: effectiveConfig,
         allSources: mounted ? config.sources : (defaultConfig as UserConfig).sources,
         disabledSourceIds: disabledSources,
-        addCategory,
-        removeCategory,
+        featuredTags: mounted ? (config.featuredTags ?? DEFAULT_FEATURED_TAGS) : DEFAULT_FEATURED_TAGS,
         addSource,
         removeSource,
         toggleSource,
         togglePaywall,
-        toggleSourceCategory,
+        setFeaturedTags,
         resetToDefaults,
       }}
     >

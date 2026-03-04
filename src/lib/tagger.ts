@@ -1,21 +1,35 @@
-import { TAG_DEFINITIONS } from "@/config/tags";
-
-const MAX_TAGS = 3;
+import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
+import type { Keyword } from "@/config/tags";
 
 interface CompiledTag {
   slug: string;
   pattern: RegExp;
 }
 
+function buildPattern(kw: Keyword): RegExp {
+  const term = typeof kw === "string" ? kw : kw.term;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (typeof kw !== "string" && kw.caseSensitive) {
+    return new RegExp(`\\b${escaped}\\b`);
+  }
+  // Default: case-sensitive for <=2 chars, insensitive otherwise
+  return new RegExp(`\\b${escaped}\\b`, term.length <= 2 ? "" : "i");
+}
+
 const compiledTags: CompiledTag[] = TAG_DEFINITIONS.flatMap((tag) =>
   tag.keywords.map((kw) => ({
     slug: tag.slug,
-    pattern: new RegExp(
-      `\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-      kw.length <= 2 ? "" : "i"
-    ),
+    pattern: buildPattern(kw),
   }))
 );
+
+function addWithParents(matched: Set<string>, slug: string) {
+  let current: string | undefined = slug;
+  while (current && !matched.has(current)) {
+    matched.add(current);
+    current = TAG_MAP.get(current)?.parent;
+  }
+}
 
 export function assignTags(article: {
   title: string;
@@ -25,10 +39,9 @@ export function assignTags(article: {
   const matched = new Set<string>();
 
   for (const { slug, pattern } of compiledTags) {
-    if (matched.size >= MAX_TAGS) break;
     if (matched.has(slug)) continue;
     if (pattern.test(text)) {
-      matched.add(slug);
+      addWithParents(matched, slug);
     }
   }
 

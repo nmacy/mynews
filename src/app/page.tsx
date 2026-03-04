@@ -60,10 +60,7 @@ function HomeContent() {
     fetch(`/api/feeds?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        const topStories = (data.articles as Article[]).filter((a) =>
-          a.categories.includes("top-stories")
-        );
-        setArticles(topStories);
+        setArticles(data.articles as Article[]);
       })
       .catch(console.error)
       .finally(() => setLoading(false));

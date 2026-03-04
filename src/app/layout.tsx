@@ -4,7 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ConfigProvider } from "@/components/ConfigProvider";
 import { Header } from "@/components/layout/Header";
-import { CategoryTabs } from "@/components/layout/CategoryTabs";
+import { TagTabs } from "@/components/layout/TagTabs";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -38,7 +38,7 @@ export default function RootLayout({
         <ThemeProvider>
           <ConfigProvider>
             <Header />
-            <CategoryTabs />
+            <TagTabs />
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
               {children}
             </main>

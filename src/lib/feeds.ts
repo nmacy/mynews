@@ -22,7 +22,7 @@ const parser = new Parser({
 const ALL_ARTICLES_KEY = "all-articles";
 const OG_BATCH_LIMIT = 5; // limit concurrent OG requests
 
-async function fetchSource(source: Source): Promise<Article[]> {
+export async function fetchSource(source: Source): Promise<Article[]> {
   try {
     const feed = await parser.parseURL(source.url);
     const articles: Article[] = [];
@@ -48,7 +48,7 @@ async function fetchSource(source: Source): Promise<Article[]> {
         imageUrl,
         publishedAt: item.isoDate ?? item.pubDate ?? new Date().toISOString(),
         source: { id: source.id, name: source.name },
-        categories: source.categories,
+        categories: [],
         tags: assignTags({ title, description: desc }),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
@@ -109,21 +109,9 @@ export async function getAllArticles(): Promise<Article[]> {
   return unique;
 }
 
-export async function getArticlesByCategory(slug: string): Promise<Article[]> {
-  const all = await getAllArticles();
-  if (slug === "top-stories") {
-    return all.filter((a) => a.categories.includes("top-stories"));
-  }
-  return all.filter((a) => a.categories.includes(slug));
-}
-
 export async function getArticleById(id: string): Promise<Article | null> {
   const all = await getAllArticles();
   return all.find((a) => a.id === id) ?? null;
-}
-
-export function getCategories() {
-  return config.categories;
 }
 
 export function getSources() {

@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useConfig } from "@/components/ConfigProvider";
-import type { Source } from "@/types";
+import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
+import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
+import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
+import { SOURCE_LIBRARY, SOURCE_CATEGORIES } from "@/config/source-library";
+import {
+  loadCustomLibrarySources,
+  saveCustomLibrarySource,
+} from "@/lib/custom-sources";
+import type { Source, LibrarySource } from "@/types";
 
 function slugify(name: string): string {
   return name
@@ -16,108 +24,75 @@ function generateSourceId(name: string): string {
   return slugify(name) + "-" + Math.random().toString(36).slice(2, 7);
 }
 
-// --- Category Section ---
+// --- Tag Bar Section ---
 
-function CategorySection() {
-  const { config, addCategory, removeCategory } = useConfig();
-  const [name, setName] = useState("");
-  const [color, setColor] = useState("#007AFF");
+function TagBarSection() {
+  const { featuredTags, setFeaturedTags } = useConfig();
 
-  const handleAdd = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const slug = slugify(trimmed);
-    if (config.categories.find((c) => c.slug === slug)) return;
-    addCategory({ slug, name: trimmed, color });
-    setName("");
-    setColor("#007AFF");
+  const isCustomized =
+    featuredTags.length !== DEFAULT_FEATURED_TAGS.length ||
+    featuredTags.some((t, i) => t !== DEFAULT_FEATURED_TAGS[i]);
+
+  const featuredSet = new Set(featuredTags);
+
+  const toggleTag = (slug: string) => {
+    if (featuredSet.has(slug)) {
+      setFeaturedTags(featuredTags.filter((t) => t !== slug));
+    } else {
+      setFeaturedTags([...featuredTags, slug]);
+    }
   };
+
+  // Selected tags in current order, then unselected in TAG_DEFINITIONS order
+  const selectedTags = featuredTags
+    .map((slug) => TAG_MAP.get(slug))
+    .filter(Boolean);
+  const unselectedTags = TAG_DEFINITIONS.filter((t) => !featuredSet.has(t.slug));
+  const orderedTags = [...selectedTags, ...unselectedTags];
 
   return (
     <div
       className="rounded-2xl p-4 sm:p-6"
       style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
     >
-      <h2 className="text-lg font-bold mb-4">Categories</h2>
-
-      <div className="space-y-2 mb-6">
-        {config.categories.map((cat) => (
-          <div
-            key={cat.slug}
-            className="flex items-center justify-between py-2 px-3 rounded-xl"
-            style={{ backgroundColor: "var(--mn-bg)" }}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold">Tag Bar</h2>
+        {isCustomized && (
+          <button
+            onClick={() => setFeaturedTags(DEFAULT_FEATURED_TAGS)}
+            className="text-sm font-medium"
+            style={{ color: "#007AFF" }}
           >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-5 h-5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: cat.color }}
-              />
-              <span className="font-medium text-sm">{cat.name}</span>
-              <span className="text-xs" style={{ color: "var(--mn-muted2)" }}>
-                {cat.slug}
-              </span>
-            </div>
-            {cat.slug !== "top-stories" ? (
-              <button
-                onClick={() => removeCategory(cat.slug)}
-                className="text-red-500 hover:text-red-600 text-sm font-medium px-2 py-1"
-                aria-label={`Delete ${cat.name}`}
-              >
-                Delete
-              </button>
-            ) : (
-              <span
-                className="text-xs px-2 py-1"
-                style={{ color: "var(--mn-muted2)" }}
-              >
-                Required
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold" style={{ color: "var(--mn-muted)" }}>
-          Add Category
-        </h3>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Category name"
-            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-            style={{
-              backgroundColor: "var(--mn-bg)",
-              border: "1px solid var(--mn-border)",
-              color: "var(--mn-fg)",
-            }}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          />
-          <div className="flex gap-2">
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0.5"
-              style={{ backgroundColor: "var(--mn-bg)" }}
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!name.trim()}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
-              style={{ backgroundColor: "#007AFF" }}
-            >
-              Add
-            </button>
-          </div>
-        </div>
-        {name.trim() && (
-          <p className="text-xs" style={{ color: "var(--mn-muted2)" }}>
-            Slug: {slugify(name.trim())}
-          </p>
+            Reset to defaults
+          </button>
         )}
+      </div>
+      <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
+        Choose which tags appear in the navigation bar.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {orderedTags.map((tag) => {
+          if (!tag) return null;
+          const active = featuredSet.has(tag.slug);
+          return (
+            <button
+              key={tag.slug}
+              onClick={() => toggleTag(tag.slug)}
+              className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors"
+              style={
+                active
+                  ? { backgroundColor: tag.color, color: "white" }
+                  : {
+                      backgroundColor: "transparent",
+                      color: "var(--mn-muted)",
+                      border: "1px solid var(--mn-border)",
+                    }
+              }
+            >
+              {tag.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -125,25 +100,18 @@ function CategorySection() {
 
 // --- Sources Section ---
 
-import type { Category } from "@/types";
-import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
-
 function SourceRow({
   source,
   disabled,
-  categories,
   onToggle,
   onRemove,
   onTogglePaywall,
-  onToggleCategory,
 }: {
   source: Source;
   disabled: boolean;
-  categories: Category[];
   onToggle: () => void;
   onRemove: () => void;
   onTogglePaywall: () => void;
-  onToggleCategory: (slug: string) => void;
 }) {
   return (
     <div
@@ -196,97 +164,154 @@ function SourceRow({
           </button>
         </div>
       </div>
-      <p className="text-xs truncate mb-2" style={{ color: "var(--mn-muted2)" }}>
+      <p className="text-xs truncate" style={{ color: "var(--mn-muted2)" }}>
         {source.url}
       </p>
-      <div className="flex flex-wrap gap-1.5">
-        {categories.map((cat) => {
-          const active = source.categories.includes(cat.slug);
-          return (
-            <button
-              key={cat.slug}
-              onClick={() => onToggleCategory(cat.slug)}
-              className="text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-              style={
-                active
-                  ? { backgroundColor: cat.color, color: "white" }
-                  : {
-                      backgroundColor: "transparent",
-                      border: "1px solid var(--mn-border)",
-                      color: "var(--mn-muted2)",
-                    }
-              }
-              title={active ? `Remove from ${cat.name}` : `Add to ${cat.name}`}
-            >
-              {cat.name}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
 
-function AddSourceForm({
-  categories,
+function SourceLibraryCard({
+  source,
+  added,
   onAdd,
 }: {
-  categories: Category[];
-  onAdd: (source: Source) => void;
+  source: LibrarySource;
+  added: boolean;
+  onAdd: (source: LibrarySource) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  return (
+    <button
+      onClick={() => !added && onAdd(source)}
+      disabled={added}
+      className="text-left px-3 py-2 rounded-lg text-sm transition-colors"
+      style={{
+        backgroundColor: added ? "var(--mn-bg)" : "var(--mn-card)",
+        border: "1px solid var(--mn-border)",
+        opacity: added ? 0.6 : 1,
+        cursor: added ? "default" : "pointer",
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium truncate">{source.name}</span>
+        {added && (
+          <span
+            className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{ backgroundColor: "var(--mn-border)", color: "var(--mn-muted2)" }}
+          >
+            Added
+          </span>
+        )}
+        {!added && source.paywalled && (
+          <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+            $
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function SourceLibraryGrid({
+  sources,
+  activeSourceIds,
+  activeSourceUrls,
+  onAdd,
+}: {
+  sources: LibrarySource[];
+  activeSourceIds: Set<string>;
+  activeSourceUrls: Set<string>;
+  onAdd: (source: LibrarySource) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, LibrarySource[]>();
+    for (const s of sources) {
+      const list = map.get(s.category) || [];
+      list.push(s);
+      map.set(s.category, list);
+    }
+    return map;
+  }, [sources]);
+
+  // Order categories: SOURCE_CATEGORIES first, then any custom
+  const categories = useMemo(() => {
+    const ordered: string[] = [];
+    for (const cat of SOURCE_CATEGORIES) {
+      if (grouped.has(cat)) ordered.push(cat);
+    }
+    for (const cat of grouped.keys()) {
+      if (!ordered.includes(cat)) ordered.push(cat);
+    }
+    return ordered;
+  }, [grouped]);
+
+  const isAdded = (s: LibrarySource) =>
+    activeSourceIds.has(s.id) || activeSourceUrls.has(s.url);
+
+  return (
+    <div className="space-y-4">
+      {categories.map((category) => (
+        <div key={category}>
+          <h4
+            className="text-xs font-semibold uppercase tracking-wide mb-2"
+            style={{ color: "var(--mn-muted)" }}
+          >
+            {category}
+          </h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {grouped.get(category)!.map((source) => (
+              <SourceLibraryCard
+                key={source.id}
+                source={source}
+                added={isAdded(source)}
+                onAdd={onAdd}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ManualSourceForm({
+  onAdd,
+}: {
+  onAdd: (source: Source, asLibrary: LibrarySource) => void;
+}) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [paywalled, setPaywalled] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-
-  const toggleCat = (slug: string) => {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(slug)) next.delete(slug);
-      else next.add(slug);
-      return next;
-    });
-  };
 
   const handleSubmit = () => {
     const trimmedName = name.trim();
     const trimmedUrl = url.trim();
-    if (!trimmedName || !trimmedUrl || selectedCategories.size === 0) return;
+    if (!trimmedName || !trimmedUrl) return;
 
-    onAdd({
-      id: generateSourceId(trimmedName),
+    const id = slugify(trimmedName) || generateSourceId(trimmedName);
+    const source: Source = {
+      id,
       name: trimmedName,
       url: trimmedUrl,
-      categories: [...selectedCategories],
       priority: 2,
       paywalled,
-    });
+    };
+    const libSource: LibrarySource = { ...source, category: "Custom" };
 
+    onAdd(source, libSource);
     setName("");
     setUrl("");
     setPaywalled(false);
-    setSelectedCategories(new Set());
-    setOpen(false);
   };
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-sm font-medium mt-3"
-        style={{ color: "#007AFF" }}
-      >
-        + Add Source
-      </button>
-    );
-  }
-
   return (
-    <div
-      className="mt-3 space-y-3 p-3 rounded-xl"
-      style={{ backgroundColor: "var(--mn-bg)" }}
-    >
+    <div className="space-y-3">
+      <h4
+        className="text-xs font-semibold uppercase tracking-wide"
+        style={{ color: "var(--mn-muted)" }}
+      >
+        Add Manually
+      </h4>
       <input
         type="text"
         value={name}
@@ -311,34 +336,6 @@ function AddSourceForm({
           color: "var(--mn-fg)",
         }}
       />
-      <div>
-        <p className="text-xs font-medium mb-1.5" style={{ color: "var(--mn-muted)" }}>
-          Categories
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {categories.map((cat) => {
-            const active = selectedCategories.has(cat.slug);
-            return (
-              <button
-                key={cat.slug}
-                onClick={() => toggleCat(cat.slug)}
-                className="text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-                style={
-                  active
-                    ? { backgroundColor: cat.color, color: "white" }
-                    : {
-                        backgroundColor: "transparent",
-                        border: "1px solid var(--mn-border)",
-                        color: "var(--mn-muted2)",
-                      }
-                }
-              >
-                {cat.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -348,28 +345,116 @@ function AddSourceForm({
         />
         Paywalled
       </label>
-      <div className="flex gap-2">
-        <button
-          onClick={handleSubmit}
-          disabled={!name.trim() || !url.trim() || selectedCategories.size === 0}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
-          style={{ backgroundColor: "#007AFF" }}
-        >
-          Add Source
-        </button>
+      <button
+        onClick={handleSubmit}
+        disabled={!name.trim() || !url.trim()}
+        className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
+        style={{ backgroundColor: "#007AFF" }}
+      >
+        Add Source
+      </button>
+    </div>
+  );
+}
+
+function AddSourcePanel({
+  activeSourceIds,
+  activeSourceUrls,
+  onAddLibrary,
+  onAddManual,
+}: {
+  activeSourceIds: Set<string>;
+  activeSourceUrls: Set<string>;
+  onAddLibrary: (source: LibrarySource) => void;
+  onAddManual: (source: Source, libSource: LibrarySource) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [customSources, setCustomSources] = useState<LibrarySource[]>([]);
+
+  useEffect(() => {
+    setCustomSources(loadCustomLibrarySources());
+  }, []);
+
+  const allLibrary = useMemo(
+    () => [...SOURCE_LIBRARY, ...customSources],
+    [customSources]
+  );
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allLibrary;
+    const q = search.toLowerCase();
+    return allLibrary.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q)
+    );
+  }, [allLibrary, search]);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-sm font-medium mt-3"
+        style={{ color: "#007AFF" }}
+      >
+        + Add Source
+      </button>
+    );
+  }
+
+  const handleAddManual = (source: Source, libSource: LibrarySource) => {
+    onAddManual(source, libSource);
+    saveCustomLibrarySource(libSource);
+    setCustomSources(loadCustomLibrarySources());
+  };
+
+  return (
+    <div
+      className="mt-3 space-y-4 p-3 rounded-xl"
+      style={{ backgroundColor: "var(--mn-bg)" }}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Source Library</h3>
         <button
           onClick={() => {
             setOpen(false);
-            setName("");
-            setUrl("");
-            setPaywalled(false);
-            setSelectedCategories(new Set());
+            setSearch("");
           }}
-          className="px-4 py-2 rounded-lg text-sm font-medium"
+          className="text-sm font-medium"
           style={{ color: "var(--mn-muted)" }}
         >
-          Cancel
+          Close
         </button>
+      </div>
+
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search sources..."
+        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+        style={{
+          backgroundColor: "var(--mn-card)",
+          border: "1px solid var(--mn-border)",
+          color: "var(--mn-fg)",
+        }}
+      />
+
+      <div className="max-h-80 overflow-y-auto">
+        <SourceLibraryGrid
+          sources={filtered}
+          activeSourceIds={activeSourceIds}
+          activeSourceUrls={activeSourceUrls}
+          onAdd={onAddLibrary}
+        />
+      </div>
+
+      <div
+        className="border-t pt-4"
+        style={{ borderColor: "var(--mn-border)" }}
+      >
+        <ManualSourceForm onAdd={handleAddManual} />
       </div>
     </div>
   );
@@ -377,25 +462,44 @@ function AddSourceForm({
 
 function SourcesSection() {
   const {
-    config,
     allSources,
     disabledSourceIds,
     addSource,
     removeSource,
     toggleSource,
     togglePaywall,
-    toggleSourceCategory,
   } = useConfig();
+
+  const activeSourceIds = useMemo(
+    () => new Set(allSources.map((s) => s.id)),
+    [allSources]
+  );
+  const activeSourceUrls = useMemo(
+    () => new Set(allSources.map((s) => s.url)),
+    [allSources]
+  );
+
+  const handleAddLibrary = (source: LibrarySource) => {
+    addSource({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      priority: source.priority,
+      paywalled: source.paywalled,
+    });
+  };
+
+  const handleAddManual = (source: Source, libSource: LibrarySource) => {
+    void libSource; // saved to custom library by AddSourcePanel
+    addSource(source);
+  };
 
   return (
     <div
       className="rounded-2xl p-4 sm:p-6"
       style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
     >
-      <h2 className="text-lg font-bold mb-1">Sources</h2>
-      <p className="text-xs mb-4" style={{ color: "var(--mn-muted)" }}>
-        Tap category tags to add or remove a source from categories.
-      </p>
+      <h2 className="text-lg font-bold mb-4">Sources</h2>
 
       <div className="space-y-2">
         {allSources.map((source) => (
@@ -403,11 +507,9 @@ function SourcesSection() {
             key={source.id}
             source={source}
             disabled={disabledSourceIds.has(source.id)}
-            categories={config.categories}
             onToggle={() => toggleSource(source.id)}
             onRemove={() => removeSource(source.id)}
             onTogglePaywall={() => togglePaywall(source.id)}
-            onToggleCategory={(slug) => toggleSourceCategory(source.id, slug)}
           />
         ))}
       </div>
@@ -418,7 +520,106 @@ function SourcesSection() {
         </p>
       )}
 
-      <AddSourceForm categories={config.categories} onAdd={addSource} />
+      <AddSourcePanel
+        activeSourceIds={activeSourceIds}
+        activeSourceUrls={activeSourceUrls}
+        onAddLibrary={handleAddLibrary}
+        onAddManual={handleAddManual}
+      />
+    </div>
+  );
+}
+
+// --- Rescan Section ---
+
+function RescanSection() {
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<{ completed: number; total: number; source: string } | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleRescan = async () => {
+    setScanning(true);
+    setResult(null);
+    setProgress(null);
+    try {
+      const res = await fetch("/api/feeds", { method: "POST" });
+      if (!res.ok || !res.body) throw new Error("Rescan failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line) continue;
+          const event = JSON.parse(line);
+          if (event.type === "progress") {
+            setProgress({ completed: event.completed, total: event.total, source: event.source });
+          } else if (event.type === "done") {
+            setProgress({ completed: event.total, total: event.total, source: "" });
+            setResult(`Rescanned ${event.count} articles`);
+          }
+        }
+      }
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : "Rescan failed");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const pct = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <h2 className="text-lg font-bold mb-2">Rescan Articles</h2>
+      <p className="text-sm mb-4" style={{ color: "var(--mn-muted)" }}>
+        Clear the article cache and re-fetch all feeds with fresh keyword tags.
+      </p>
+
+      {scanning && progress && (
+        <div className="mb-4">
+          <div className="flex justify-between text-xs mb-1" style={{ color: "var(--mn-muted)" }}>
+            <span>Fetching {progress.source}...</span>
+            <span>{progress.completed}/{progress.total} sources</span>
+          </div>
+          <div
+            className="h-2 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--mn-border)" }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${pct}%`, backgroundColor: "#007AFF" }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleRescan}
+          disabled={scanning}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: "#007AFF" }}
+        >
+          {scanning ? "Scanning..." : "Rescan Now"}
+        </button>
+        {result && !scanning && (
+          <span className="text-sm" style={{ color: "var(--mn-muted)" }}>
+            {result}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -449,9 +650,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <CategorySection />
       <SourcesSection />
+      <TagBarSection />
       <AiTaggerSection />
+      <RescanSection />
 
       {/* Reset to Defaults */}
       <div
@@ -460,8 +662,7 @@ export default function SettingsPage() {
       >
         <h2 className="text-lg font-bold mb-2">Reset</h2>
         <p className="text-sm mb-4" style={{ color: "var(--mn-muted)" }}>
-          Restore all categories and sources to their original defaults. This cannot be
-          undone.
+          Restore all sources to their original defaults. This cannot be undone.
         </p>
         {!showConfirm ? (
           <button

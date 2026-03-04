@@ -8,6 +8,7 @@ import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
+import { TAG_MAP } from "@/config/tags";
 import type { Article } from "@/types";
 
 function ArticleSkeleton() {
@@ -33,13 +34,13 @@ function ArticleSkeleton() {
   );
 }
 
-function CategoryContent() {
+function TagContent() {
   const { slug } = useParams<{ slug: string }>();
   const { config } = useConfig();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const category = config.categories.find((c) => c.slug === slug);
+  const tag = TAG_MAP.get(slug);
 
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),
@@ -62,10 +63,7 @@ function CategoryContent() {
     fetch(`/api/feeds?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        const filtered = (data.articles as Article[]).filter((a) =>
-          a.categories.includes(slug)
-        );
-        setArticles(filtered);
+        setArticles(data.articles as Article[]);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -73,13 +71,20 @@ function CategoryContent() {
   }, [slug, sourcesKey]);
 
   const { articles: taggedArticles } = useAiTagger(articles);
-  const { filtered, sources, activeFilters, hasActiveFilters } =
-    useArticleFilters(taggedArticles);
 
-  if (!category) {
+  // Filter by the tag slug
+  const tagFiltered = useMemo(
+    () => taggedArticles.filter((a) => (a.tags ?? []).includes(slug)),
+    [taggedArticles, slug]
+  );
+
+  const { filtered, sources, activeFilters, hasActiveFilters } =
+    useArticleFilters(tagFiltered);
+
+  if (!tag) {
     return (
       <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
-        <p className="text-lg">Category not found</p>
+        <p className="text-lg">Tag not found</p>
       </div>
     );
   }
@@ -91,15 +96,25 @@ function CategoryContent() {
 
   return (
     <>
+      <div className="flex items-center gap-3 mb-6">
+        <span
+          className="inline-block w-3 h-3 rounded-full"
+          style={{ backgroundColor: tag.color }}
+        />
+        <h1 className="text-2xl font-bold">{tag.label}</h1>
+        <span className="text-sm" style={{ color: "var(--mn-muted)" }}>
+          {filtered.length} {filtered.length === 1 ? "article" : "articles"}
+        </span>
+      </div>
       <FilterBar
         sources={sources}
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
       />
-      {filtered.length === 0 && hasActiveFilters ? (
+      {filtered.length === 0 ? (
         <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
-          <p className="text-lg">No results found</p>
-          <p className="text-sm mt-1">Try adjusting your filters</p>
+          <p className="text-lg">No articles found for this tag</p>
+          <p className="text-sm mt-1">Try adjusting your filters or check back later</p>
         </div>
       ) : (
         <>
@@ -111,10 +126,10 @@ function CategoryContent() {
   );
 }
 
-export default function CategoryPage() {
+export default function TagPage() {
   return (
     <Suspense fallback={<ArticleSkeleton />}>
-      <CategoryContent />
+      <TagContent />
     </Suspense>
   );
 }

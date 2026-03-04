@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
-import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
 import { useAiTagger } from "@/lib/useAiTagger";
 import type { Article } from "@/types";
@@ -114,12 +113,11 @@ export default function SourcePage() {
         <p className="text-sm mt-1 break-all" style={{ color: "var(--mn-muted)" }}>
           {source.url}
         </p>
-        <div className="flex flex-wrap items-center gap-2 mt-3">
-          {source.paywalled && <PaywallBadge />}
-          {source.categories.map((cat) => (
-            <CategoryBadge key={cat} slug={cat} />
-          ))}
-        </div>
+        {source.paywalled && (
+          <div className="mt-3">
+            <PaywallBadge />
+          </div>
+        )}
       </div>
 
       {hero && <HeroArticle article={hero} />}

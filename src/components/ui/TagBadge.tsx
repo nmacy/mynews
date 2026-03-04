@@ -1,11 +1,10 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { TAG_MAP } from "@/config/tags";
 
 export function TagBadge({ slug, aiTagged }: { slug: string; aiTagged?: boolean }) {
   const router = useRouter();
-  const pathname = usePathname();
   const tag = TAG_MAP.get(slug);
   if (!tag) return null;
 
@@ -16,13 +15,13 @@ export function TagBadge({ slug, aiTagged }: { slug: string; aiTagged?: boolean 
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        router.push(`${pathname}?tag=${slug}`);
+        router.push(`/tag/${slug}`);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          router.push(`${pathname}?tag=${slug}`);
+          router.push(`/tag/${slug}`);
         }
       }}
       className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full cursor-pointer transition-colors"

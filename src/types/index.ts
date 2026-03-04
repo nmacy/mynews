@@ -1,26 +1,22 @@
-export interface Category {
-  slug: string;
-  name: string;
-  color: string;
-}
-
 export interface Source {
   id: string;
   name: string;
   url: string;
-  categories: string[];
   priority: number;
   paywalled?: boolean;
 }
 
+export interface LibrarySource extends Source {
+  category: string;
+}
+
 export interface SourcesConfig {
-  categories: Category[];
   sources: Source[];
 }
 
 export interface UserConfig {
-  categories: Category[];
   sources: Source[];
+  featuredTags?: string[];
 }
 
 export interface Article {

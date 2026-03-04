@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
-import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
@@ -30,7 +29,6 @@ export function HeroArticle({ article }: { article: Article }) {
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
         <div className="flex items-center gap-2 mb-2">
-          <CategoryBadge slug={article.categories[0]} />
           {article.paywalled && <PaywallBadge />}
           <span
             role="link"

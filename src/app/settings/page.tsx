@@ -2,6 +2,23 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { restrictToParentElement } from "@dnd-kit/modifiers";
+import { CSS } from "@dnd-kit/utilities";
 import { useConfig } from "@/components/ConfigProvider";
 import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
@@ -26,6 +43,49 @@ function generateSourceId(name: string): string {
 
 // --- Tag Bar Section ---
 
+function SortableTag({
+  slug,
+  label,
+  color,
+  onRemove,
+}: {
+  slug: string;
+  label: string;
+  color: string;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: slug });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    backgroundColor: color,
+    color: "white",
+    opacity: isDragging ? 0.5 : 1,
+    cursor: "grab",
+  };
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors touch-none select-none"
+      onClick={onRemove}
+      {...attributes}
+      {...listeners}
+    >
+      {label}
+    </button>
+  );
+}
+
 function TagBarSection() {
   const { featuredTags, setFeaturedTags } = useConfig();
 
@@ -35,20 +95,32 @@ function TagBarSection() {
 
   const featuredSet = new Set(featuredTags);
 
-  const toggleTag = (slug: string) => {
-    if (featuredSet.has(slug)) {
-      setFeaturedTags(featuredTags.filter((t) => t !== slug));
-    } else {
-      setFeaturedTags([...featuredTags, slug]);
-    }
+  const removeTag = (slug: string) => {
+    setFeaturedTags(featuredTags.filter((t) => t !== slug));
   };
 
-  // Selected tags in current order, then unselected in TAG_DEFINITIONS order
+  const addTag = (slug: string) => {
+    setFeaturedTags([...featuredTags, slug]);
+  };
+
   const selectedTags = featuredTags
     .map((slug) => TAG_MAP.get(slug))
     .filter(Boolean);
   const unselectedTags = TAG_DEFINITIONS.filter((t) => !featuredSet.has(t.slug));
-  const orderedTags = [...selectedTags, ...unselectedTags];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = featuredTags.indexOf(active.id as string);
+      const newIndex = featuredTags.indexOf(over.id as string);
+      setFeaturedTags(arrayMove(featuredTags, oldIndex, newIndex));
+    }
+  };
 
   return (
     <div
@@ -68,32 +140,63 @@ function TagBarSection() {
         )}
       </div>
       <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
-        Choose which tags appear in the navigation bar.
+        Drag to reorder. Click to remove. Choose which tags appear in the navigation bar.
       </p>
-      <div className="flex flex-wrap gap-2">
-        {orderedTags.map((tag) => {
-          if (!tag) return null;
-          const active = featuredSet.has(tag.slug);
-          return (
-            <button
-              key={tag.slug}
-              onClick={() => toggleTag(tag.slug)}
-              className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors"
-              style={
-                active
-                  ? { backgroundColor: tag.color, color: "white" }
-                  : {
-                      backgroundColor: "transparent",
-                      color: "var(--mn-muted)",
-                      border: "1px solid var(--mn-border)",
-                    }
-              }
-            >
-              {tag.label}
-            </button>
-          );
-        })}
-      </div>
+
+      {selectedTags.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
+            Selected
+          </p>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToParentElement]}
+          >
+            <SortableContext items={featuredTags} strategy={horizontalListSortingStrategy}>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {selectedTags.map((tag) => {
+                  if (!tag) return null;
+                  return (
+                    <SortableTag
+                      key={tag.slug}
+                      slug={tag.slug}
+                      label={tag.label}
+                      color={tag.color}
+                      onRemove={() => removeTag(tag.slug)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </>
+      )}
+
+      {unselectedTags.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
+            Available
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {unselectedTags.map((tag) => (
+              <button
+                key={tag.slug}
+                onClick={() => addTag(tag.slug)}
+                className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors"
+                style={{
+                  backgroundColor: "transparent",
+                  color: "var(--mn-muted)",
+                  border: "1px solid var(--mn-border)",
+                }}
+              >
+                {tag.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

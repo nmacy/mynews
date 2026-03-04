@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
@@ -29,18 +30,22 @@ function ArticleSkeleton() {
   );
 }
 
-export default function HomePage() {
+export default function CategoryPage() {
+  const { slug } = useParams<{ slug: string }>();
   const { config } = useConfig();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stable key for sources so useEffect doesn't re-fire on every render
+  const category = config.categories.find((c) => c.slug === slug);
+
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),
     [config.sources]
   );
 
   useEffect(() => {
+    if (!slug) return;
+
     if (config.sources.length === 0) {
       setArticles([]);
       setLoading(false);
@@ -54,15 +59,23 @@ export default function HomePage() {
     fetch(`/api/feeds?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        const topStories = (data.articles as Article[]).filter((a) =>
-          a.categories.includes("top-stories")
+        const filtered = (data.articles as Article[]).filter((a) =>
+          a.categories.includes(slug)
         );
-        setArticles(topStories);
+        setArticles(filtered);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourcesKey]);
+  }, [slug, sourcesKey]);
+
+  if (!category) {
+    return (
+      <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+        <p className="text-lg">Category not found</p>
+      </div>
+    );
+  }
 
   if (loading) return <ArticleSkeleton />;
 

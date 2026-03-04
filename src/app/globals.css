@@ -1,26 +1,53 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --mn-bg: #F2F2F7;
+  --mn-fg: #1C1C1E;
+  --mn-card: #FFFFFF;
+  --mn-border: #E5E7EB;
+  --mn-muted: #6B7280;
+  --mn-muted2: #9CA3AF;
+  --mn-link: #2563EB;
+  --mn-link-hover: #1D4ED8;
+}
+
+:root.dark {
+  --mn-bg: #1C1C1E;
+  --mn-fg: #F2F2F7;
+  --mn-card: #2C2C2E;
+  --mn-border: #3A3A3C;
+  --mn-muted: #A1A1AA;
+  --mn-muted2: #71717A;
+  --mn-link: #60A5FA;
+  --mn-link-hover: #93BBFD;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  background-color: var(--mn-bg);
+  color: var(--mn-fg);
+}
+
+/* Prose link colors for dark mode */
+.prose a {
+  color: var(--mn-link);
+}
+.prose a:hover {
+  color: var(--mn-link-hover);
+}
+
+/* Hide scrollbar on category tabs */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

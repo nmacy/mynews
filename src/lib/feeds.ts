@@ -2,6 +2,7 @@ import Parser from "rss-parser";
 import { getCached, setCache } from "./cache";
 import { generateArticleId, stripHtml, truncate } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
+import { assignTags } from "./tagger";
 import sourcesConfig from "@/config/sources.json";
 import type { Article, Source, SourcesConfig } from "@/types";
 
@@ -35,16 +36,20 @@ async function fetchSource(source: Source): Promise<Article[]> {
         item.contentSnippet ?? item.content ?? item.summary ?? ""
       );
 
+      const title = item.title.trim();
+      const desc = truncate(description, 300);
+
       articles.push({
         id: generateArticleId(link),
-        title: item.title.trim(),
-        description: truncate(description, 300),
+        title,
+        description: desc,
         content: item["content:encoded"] ?? item.content ?? item.summary ?? "",
         url: link,
         imageUrl,
         publishedAt: item.isoDate ?? item.pubDate ?? new Date().toISOString(),
         source: { id: source.id, name: source.name },
         categories: source.categories,
+        tags: assignTags({ title, description: desc }),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
       });

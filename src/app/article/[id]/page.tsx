@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArticleImage } from "@/components/articles/ArticleImage";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
 import { getStoredArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
@@ -75,6 +76,9 @@ export default function ArticlePage() {
         <div className="flex items-center gap-2 mb-3">
           {article.categories.map((slug) => (
             <CategoryBadge key={slug} slug={slug} />
+          ))}
+          {(article.tags ?? []).map((tag) => (
+            <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
           ))}
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold leading-tight mb-3">

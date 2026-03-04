@@ -36,6 +36,18 @@ export interface Article {
     name: string;
   };
   categories: string[];
+  tags: string[];
   priority: number;
   paywalled: boolean;
+  /** Debug flag — true when tags came from AI, false/undefined for keyword tags */
+  _aiTagged?: boolean;
+}
+
+export type AiProvider = "anthropic" | "openai" | "gemini" | "openrouter";
+
+export interface AiTaggerConfig {
+  enabled: boolean;
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
 }

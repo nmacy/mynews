@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { useAiTagger } from "@/lib/useAiTagger";
+import { useArticleFilters } from "@/lib/useArticleFilters";
 import type { Article } from "@/types";
 
 function ArticleSkeleton() {
@@ -30,7 +33,7 @@ function ArticleSkeleton() {
   );
 }
 
-export default function CategoryPage() {
+function CategoryContent() {
   const { slug } = useParams<{ slug: string }>();
   const { config } = useConfig();
   const [articles, setArticles] = useState<Article[]>([]);
@@ -69,6 +72,10 @@ export default function CategoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, sourcesKey]);
 
+  const { articles: taggedArticles } = useAiTagger(articles);
+  const { filtered, sources, activeFilters, hasActiveFilters } =
+    useArticleFilters(taggedArticles);
+
   if (!category) {
     return (
       <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
@@ -79,13 +86,35 @@ export default function CategoryPage() {
 
   if (loading) return <ArticleSkeleton />;
 
-  const hero = articles[0];
-  const rest = articles.slice(1);
+  const hero = hasActiveFilters ? undefined : filtered[0];
+  const grid = hasActiveFilters ? filtered : filtered.slice(1);
 
   return (
     <>
-      {hero && <HeroArticle article={hero} />}
-      <ArticleGrid articles={rest} />
+      <FilterBar
+        sources={sources}
+        activeFilters={activeFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
+      {filtered.length === 0 && hasActiveFilters ? (
+        <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+          <p className="text-lg">No results found</p>
+          <p className="text-sm mt-1">Try adjusting your filters</p>
+        </div>
+      ) : (
+        <>
+          {hero && <HeroArticle article={hero} />}
+          <ArticleGrid articles={grid} />
+        </>
+      )}
     </>
+  );
+}
+
+export default function CategoryPage() {
+  return (
+    <Suspense fallback={<ArticleSkeleton />}>
+      <CategoryContent />
+    </Suspense>
   );
 }

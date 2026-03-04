@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
 import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
@@ -59,6 +60,13 @@ export function HeroArticle({ article }: { article: Article }) {
         <p className="mt-2 text-white/80 text-sm sm:text-base line-clamp-2 max-w-3xl">
           {article.description}
         </p>
+        {(article.tags ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {(article.tags ?? []).map((tag) => (
+              <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
+            ))}
+          </div>
+        )}
       </div>
     </Link>
   );

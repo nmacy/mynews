@@ -6,6 +6,9 @@ import Link from "next/link";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { useAiTagger } from "@/lib/useAiTagger";
+import { useArticleFilters } from "@/lib/useArticleFilters";
 import type { Article } from "@/types";
 
 function ArticleSkeleton() {
@@ -67,18 +70,37 @@ function HomeContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourcesKey]);
 
-  if (loading) return <ArticleSkeleton />;
+  const { articles: taggedArticles, isTagging, error: aiError } = useAiTagger(articles);
 
-  if (searchQuery) {
+  // Apply search query first, then pass to filter hook
+  const searchFiltered = useMemo(() => {
+    if (!searchQuery) return taggedArticles;
     const q = searchQuery.toLowerCase();
-    const filtered = articles.filter(
+    return taggedArticles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
         a.description.toLowerCase().includes(q)
     );
+  }, [taggedArticles, searchQuery]);
 
-    return (
-      <>
+  const { filtered, sources, activeFilters, hasActiveFilters } =
+    useArticleFilters(searchFiltered);
+
+  if (loading) return <ArticleSkeleton />;
+
+  const displayed = filtered;
+  const isFiltered = hasActiveFilters || searchQuery;
+  const hero = isFiltered ? undefined : displayed[0];
+  const grid = isFiltered ? displayed : displayed.slice(1);
+
+  return (
+    <>
+      {aiError && (
+        <p className="text-xs mb-4 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">
+          AI tagging failed: {aiError}
+        </p>
+      )}
+      {searchQuery && (
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm" style={{ color: "var(--mn-muted)" }}>
             Showing results for &ldquo;{searchQuery}&rdquo;
@@ -91,25 +113,23 @@ function HomeContent() {
             Clear search
           </Link>
         </div>
-        {filtered.length === 0 ? (
-          <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
-            <p className="text-lg">No results for &ldquo;{searchQuery}&rdquo;</p>
-            <p className="text-sm mt-1">Try a different search term</p>
-          </div>
-        ) : (
-          <ArticleGrid articles={filtered} />
-        )}
-      </>
-    );
-  }
-
-  const hero = articles[0];
-  const rest = articles.slice(1);
-
-  return (
-    <>
-      {hero && <HeroArticle article={hero} />}
-      <ArticleGrid articles={rest} />
+      )}
+      <FilterBar
+        sources={sources}
+        activeFilters={activeFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
+      {displayed.length === 0 && isFiltered ? (
+        <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+          <p className="text-lg">No results found</p>
+          <p className="text-sm mt-1">Try adjusting your filters</p>
+        </div>
+      ) : (
+        <>
+          {hero && <HeroArticle article={hero} />}
+          <ArticleGrid articles={grid} />
+        </>
+      )}
     </>
   );
 }

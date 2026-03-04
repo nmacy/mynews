@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
+import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
 import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
@@ -59,6 +60,13 @@ export function ArticleCard({ article }: { article: Article }) {
         <p className="mt-1 text-sm line-clamp-2" style={{ color: "var(--mn-muted)" }}>
           {article.description}
         </p>
+        {(article.tags ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {(article.tags ?? []).map((tag) => (
+              <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
+            ))}
+          </div>
+        )}
         <div className="mt-3">
           <TimeAgo date={article.publishedAt} />
         </div>

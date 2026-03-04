@@ -126,6 +126,7 @@ function CategorySection() {
 // --- Sources Section ---
 
 import type { Category } from "@/types";
+import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
 
 function SourceRow({
   source,
@@ -450,6 +451,7 @@ export default function SettingsPage() {
 
       <CategorySection />
       <SourcesSection />
+      <AiTaggerSection />
 
       {/* Reset to Defaults */}
       <div

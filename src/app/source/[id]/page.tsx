@@ -8,6 +8,7 @@ import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
+import { useAiTagger } from "@/lib/useAiTagger";
 import type { Article } from "@/types";
 
 function SourceSkeleton() {
@@ -68,6 +69,8 @@ export default function SourcePage() {
       .finally(() => setLoading(false));
   }, [source]);
 
+  const { articles: taggedArticles } = useAiTagger(articles);
+
   if (!source) {
     return (
       <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
@@ -81,8 +84,8 @@ export default function SourcePage() {
 
   if (loading) return <SourceSkeleton />;
 
-  const hero = articles[0];
-  const rest = articles.slice(1);
+  const hero = taggedArticles[0];
+  const rest = taggedArticles.slice(1);
 
   return (
     <>

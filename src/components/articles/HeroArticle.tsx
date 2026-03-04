@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
@@ -9,6 +10,8 @@ import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
 
 export function HeroArticle({ article }: { article: Article }) {
+  const router = useRouter();
+
   return (
     <Link
       href={`/article/${article.id}`}
@@ -28,7 +31,25 @@ export function HeroArticle({ article }: { article: Article }) {
         <div className="flex items-center gap-2 mb-2">
           <CategoryBadge slug={article.categories[0]} />
           {article.paywalled && <PaywallBadge />}
-          <span className="text-white/80 text-sm">{article.source.name}</span>
+          <span
+            role="link"
+            tabIndex={0}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push(`/source/${article.source.id}`);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                router.push(`/source/${article.source.id}`);
+              }
+            }}
+            className="text-white/80 text-sm hover:underline cursor-pointer"
+          >
+            {article.source.name}
+          </span>
           <span className="text-white/60">·</span>
           <TimeAgo date={article.publishedAt} />
         </div>

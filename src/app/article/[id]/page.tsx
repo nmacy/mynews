@@ -114,18 +114,35 @@ export default function ArticlePage() {
 
       {extractError && !fullContent && (
         <div
-          className="text-sm mb-4 px-3 py-2 rounded-lg"
-          style={{ backgroundColor: "var(--mn-bg)", color: "var(--mn-muted)" }}
+          className="mb-6 px-4 py-4 rounded-xl"
+          style={{ backgroundColor: "var(--mn-bg)", border: "1px solid var(--mn-border)" }}
         >
-          Could not load full article.{" "}
+          {article.paywalled ? (
+            <>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                  Paywalled
+                </span>
+                <span className="text-sm font-medium">{article.source.name}</span>
+              </div>
+              <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
+                This article is behind a paywall. The excerpt below is from the RSS feed.
+                Read the full article on the source site.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
+              Could not load the full article. Showing the available excerpt below.
+            </p>
+          )}
           <a
             href={article.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline"
-            style={{ color: "var(--mn-link)" }}
+            className="inline-block px-4 py-2 rounded-lg text-sm font-medium text-white"
+            style={{ backgroundColor: "var(--mn-link)" }}
           >
-            Read on {article.source.name}
+            Read full article on {article.source.name} &rarr;
           </a>
         </div>
       )}

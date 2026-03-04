@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
@@ -29,12 +31,13 @@ function ArticleSkeleton() {
   );
 }
 
-export default function HomePage() {
+function HomeContent() {
   const { config } = useConfig();
+  const searchParams = useSearchParams();
+  const searchQuery = searchParams.get("q") || "";
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stable key for sources so useEffect doesn't re-fire on every render
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),
     [config.sources]
@@ -66,6 +69,40 @@ export default function HomePage() {
 
   if (loading) return <ArticleSkeleton />;
 
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    const filtered = articles.filter(
+      (a) =>
+        a.title.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q)
+    );
+
+    return (
+      <>
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-sm" style={{ color: "var(--mn-muted)" }}>
+            Showing results for &ldquo;{searchQuery}&rdquo;
+          </p>
+          <Link
+            href="/"
+            className="text-sm hover:underline"
+            style={{ color: "var(--mn-link)" }}
+          >
+            Clear search
+          </Link>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+            <p className="text-lg">No results for &ldquo;{searchQuery}&rdquo;</p>
+            <p className="text-sm mt-1">Try a different search term</p>
+          </div>
+        ) : (
+          <ArticleGrid articles={filtered} />
+        )}
+      </>
+    );
+  }
+
   const hero = articles[0];
   const rest = articles.slice(1);
 
@@ -74,5 +111,13 @@ export default function HomePage() {
       {hero && <HeroArticle article={hero} />}
       <ArticleGrid articles={rest} />
     </>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<ArticleSkeleton />}>
+      <HomeContent />
+    </Suspense>
   );
 }

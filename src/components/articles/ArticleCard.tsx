@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
 import { CategoryBadge } from "@/components/ui/CategoryBadge";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
@@ -9,6 +10,8 @@ import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
 
 export function ArticleCard({ article }: { article: Article }) {
+  const router = useRouter();
+
   return (
     <Link
       href={`/article/${article.id}`}
@@ -29,7 +32,26 @@ export function ArticleCard({ article }: { article: Article }) {
         <div className="flex items-center gap-2 mb-2">
           <CategoryBadge slug={article.categories[0]} />
           {article.paywalled && <PaywallBadge />}
-          <span className="text-xs" style={{ color: "var(--mn-muted)" }}>{article.source.name}</span>
+          <span
+            role="link"
+            tabIndex={0}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push(`/source/${article.source.id}`);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                router.push(`/source/${article.source.id}`);
+              }
+            }}
+            className="text-xs hover:underline cursor-pointer"
+            style={{ color: "var(--mn-muted)" }}
+          >
+            {article.source.name}
+          </span>
         </div>
         <h3 className="font-semibold text-base leading-snug line-clamp-2 group-hover:text-[var(--mn-link)] transition-colors">
           {article.title}

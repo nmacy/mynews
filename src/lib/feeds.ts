@@ -20,7 +20,10 @@ const parser = new Parser({
 });
 
 const ALL_ARTICLES_KEY = "all-articles";
-const OG_BATCH_LIMIT = 5; // limit concurrent OG requests
+const OG_CONCURRENCY = 10; // max concurrent OG requests
+
+/** Track in-flight OG fill jobs so we don't double-trigger */
+const ogFillInFlight = new Set<string>();
 
 export async function fetchSource(source: Source): Promise<Article[]> {
   try {
@@ -62,16 +65,32 @@ export async function fetchSource(source: Source): Promise<Article[]> {
   }
 }
 
-async function tryFillOgImages(articles: Article[]): Promise<void> {
-  const needImages = articles.filter((a) => !a.imageUrl).slice(0, OG_BATCH_LIMIT);
-  const results = await Promise.allSettled(
-    needImages.map(async (article) => {
-      const ogImage = await extractOgImage(article.url);
-      if (ogImage) article.imageUrl = ogImage;
-    })
-  );
-  // results consumed for side effects only
-  void results;
+/**
+ * Fill missing OG images in the background and update the cache when done.
+ * Non-blocking — the caller returns articles immediately.
+ */
+function fillOgImagesInBackground(articles: Article[], cacheKey: string): void {
+  const needImages = articles.filter((a) => !a.imageUrl);
+  if (needImages.length === 0 || ogFillInFlight.has(cacheKey)) return;
+
+  ogFillInFlight.add(cacheKey);
+
+  (async () => {
+    for (let i = 0; i < needImages.length; i += OG_CONCURRENCY) {
+      const batch = needImages.slice(i, i + OG_CONCURRENCY);
+      await Promise.allSettled(
+        batch.map(async (article) => {
+          const ogImage = await extractOgImage(article.url);
+          if (ogImage) article.imageUrl = ogImage;
+        })
+      );
+    }
+    // Update cache with images filled in (articles array was mutated)
+    setCache(cacheKey, articles);
+    ogFillInFlight.delete(cacheKey);
+  })().catch(() => {
+    ogFillInFlight.delete(cacheKey);
+  });
 }
 
 export async function getAllArticles(): Promise<Article[]> {
@@ -102,10 +121,8 @@ export async function getAllArticles(): Promise<Article[]> {
     return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
   });
 
-  // Best-effort OG image fill for top articles missing images
-  await tryFillOgImages(unique);
-
   setCache(ALL_ARTICLES_KEY, unique);
+  fillOgImagesInBackground(unique, ALL_ARTICLES_KEY);
   return unique;
 }
 
@@ -152,5 +169,6 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
   );
 
   setCache(cacheKey, unique);
+  fillOgImagesInBackground(unique, cacheKey);
   return unique;
 }

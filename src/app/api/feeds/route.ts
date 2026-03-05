@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, fetchSource } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
-import { extractOgImage } from "@/lib/image-extractor";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
@@ -75,15 +74,6 @@ export async function POST() {
         return true;
       });
       unique.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-
-      // Best-effort OG image fill
-      const needImages = unique.filter((a) => !a.imageUrl).slice(0, 5);
-      await Promise.allSettled(
-        needImages.map(async (article) => {
-          const img = await extractOgImage(article.url);
-          if (img) article.imageUrl = img;
-        })
-      );
 
       setCache("all-articles", unique);
       send({ type: "done", completed: total, total, count: unique.length });

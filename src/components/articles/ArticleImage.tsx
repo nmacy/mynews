@@ -13,7 +13,7 @@ export function ArticleImage({
   sizes,
   priority,
 }: {
-  src: string | null;
+  src: string | null | undefined;
   alt: string;
   fill?: boolean;
   className?: string;
@@ -21,7 +21,8 @@ export function ArticleImage({
   priority?: boolean;
 }) {
   const [error, setError] = useState(false);
-  const imageSrc = !src || error ? PLACEHOLDER_SVG : src;
+  const isValid = !!src && (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:"));
+  const imageSrc = !isValid || error ? PLACEHOLDER_SVG : src;
 
   return (
     <Image
@@ -32,7 +33,7 @@ export function ArticleImage({
       sizes={sizes}
       priority={priority}
       onError={() => setError(true)}
-      unoptimized={!src || error}
+      unoptimized={!isValid || error}
     />
   );
 }

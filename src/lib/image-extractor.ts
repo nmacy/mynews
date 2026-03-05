@@ -47,7 +47,7 @@ export async function extractOgImage(articleUrl: string): Promise<string | null>
     const ogs = (await import("open-graph-scraper")).default;
     const { result } = await ogs({
       url: articleUrl,
-      timeout: 5000,
+      timeout: 3000,
       fetchOptions: {
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; MyNewsBot/1.0)",

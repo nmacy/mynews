@@ -380,6 +380,9 @@ async function tryJinaReader(url: string): Promise<ExtractionResult | null> {
   const markdown = await res.text();
   if (markdown.length < 100) return null;
 
+  // Detect error/CAPTCHA responses from Jina
+  if (/returned error \d{3}|requiring CAPTCHA|access denied|blocked/i.test(markdown)) return null;
+
   // Extract title from first markdown heading if present
   const titleMatch = markdown.match(/^#\s+(.+)$/m);
   const title = titleMatch?.[1]?.trim() ?? null;
@@ -396,6 +399,45 @@ async function tryJinaReader(url: string): Promise<ExtractionResult | null> {
     image: null,
     ttr: null,
   };
+}
+
+/** Fallback: fetch article from the Wayback Machine (Internet Archive) */
+async function tryWaybackMachine(url: string): Promise<ExtractionResult | null> {
+  // Check availability first
+  const checkRes = await fetch(
+    `https://archive.org/wayback/available?url=${encodeURIComponent(url)}`,
+    { signal: AbortSignal.timeout(5000) }
+  );
+  if (!checkRes.ok) return null;
+
+  const check = await checkRes.json();
+  const snapshotUrl = check?.archived_snapshots?.closest?.url;
+  if (!snapshotUrl || check.archived_snapshots.closest.status !== "200") return null;
+
+  // Fetch the archived page and extract with Readability
+  const res = await fetch(snapshotUrl, {
+    headers: FETCH_HEADERS,
+    signal: AbortSignal.timeout(15000),
+    redirect: "follow",
+  });
+  if (!res.ok) return null;
+
+  const html = await res.text();
+  const dom = new JSDOM(html, { url: snapshotUrl });
+  const reader = new Readability(dom.window.document);
+  const article = reader.parse();
+
+  if (article?.content && article.content.length > 200) {
+    return {
+      title: article.title ?? null,
+      content: article.content,
+      author: article.byline ?? null,
+      published: null,
+      image: null,
+      ttr: null,
+    };
+  }
+  return null;
 }
 
 // 20 extractions per minute per IP
@@ -475,6 +517,17 @@ export async function GET(request: NextRequest) {
       const cleaned = cleanExtractedHtml(jinaResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
         const result = { ...jinaResult, content: cleaned };
+        setCachedExtraction(url, result).catch(() => {});
+        return NextResponse.json(result);
+      }
+    }
+
+    // Fallback 3: Wayback Machine (for sites that block server-side requests)
+    const waybackResult = await tryWaybackMachine(url).catch(() => null);
+    if (waybackResult) {
+      const cleaned = cleanExtractedHtml(waybackResult.content);
+      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
+        const result = { ...waybackResult, content: cleaned };
         setCachedExtraction(url, result).catch(() => {});
         return NextResponse.json(result);
       }

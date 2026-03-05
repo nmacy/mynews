@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import {
   DndContext,
@@ -20,7 +21,10 @@ import {
 import { restrictToParentElement } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import { useConfig } from "@/components/ConfigProvider";
+import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
+import { ACCENT_PALETTES } from "@/config/accents";
 import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
+import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
 import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
 import { SOURCE_LIBRARY, SOURCE_CATEGORIES } from "@/config/source-library";
@@ -133,7 +137,7 @@ function TagBarSection() {
           <button
             onClick={() => setFeaturedTags(DEFAULT_FEATURED_TAGS)}
             className="text-sm font-medium"
-            style={{ color: "#007AFF" }}
+            style={{ color: "var(--mn-accent)" }}
           >
             Reset to defaults
           </button>
@@ -197,6 +201,103 @@ function TagBarSection() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// --- Theme Section ---
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+function ThemeSection() {
+  const { preference, setTheme } = useTheme();
+  const { saveTheme } = useConfig();
+
+  const handleSelect = (pref: ThemePreference) => {
+    setTheme(pref);
+    saveTheme(pref);
+  };
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <h2 className="text-lg font-bold mb-4">Theme</h2>
+      <div className="flex gap-2">
+        {THEME_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => handleSelect(opt.value)}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={
+              preference === opt.value
+                ? { backgroundColor: "var(--mn-accent)", color: "white" }
+                : {
+                    backgroundColor: "var(--mn-bg)",
+                    color: "var(--mn-fg)",
+                    border: "1px solid var(--mn-border)",
+                  }
+            }
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- Accent Section ---
+
+function AccentSection() {
+  const { accent, setAccent, theme } = useTheme();
+  const { saveAccent } = useConfig();
+
+  const handleSelect = (id: AccentId) => {
+    setAccent(id);
+    saveAccent(id);
+  };
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <h2 className="text-lg font-bold mb-4">Accent Color</h2>
+      <div className="flex flex-wrap gap-3">
+        {ACCENT_PALETTES.map((palette) => {
+          const color = theme === "dark" ? palette.dark.accent : palette.light.accent;
+          const isSelected = accent === palette.id;
+          return (
+            <button
+              key={palette.id}
+              onClick={() => handleSelect(palette.id)}
+              className="flex flex-col items-center gap-1.5"
+            >
+              <div
+                className="w-9 h-9 rounded-full transition-shadow"
+                style={{
+                  backgroundColor: color,
+                  boxShadow: isSelected
+                    ? `0 0 0 2px var(--mn-card), 0 0 0 4px ${color}`
+                    : "none",
+                }}
+              />
+              <span
+                className="text-xs font-medium"
+                style={{ color: isSelected ? color : "var(--mn-muted)" }}
+              >
+                {palette.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -452,7 +553,7 @@ function ManualSourceForm({
         onClick={handleSubmit}
         disabled={!name.trim() || !url.trim()}
         className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
-        style={{ backgroundColor: "#007AFF" }}
+        style={{ backgroundColor: "var(--mn-accent)" }}
       >
         Add Source
       </button>
@@ -499,7 +600,7 @@ function AddSourcePanel({
       <button
         onClick={() => setOpen(true)}
         className="text-sm font-medium mt-3"
-        style={{ color: "#007AFF" }}
+        style={{ color: "var(--mn-accent)" }}
       >
         + Add Source
       </button>
@@ -702,7 +803,7 @@ function RescanSection() {
           >
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${pct}%`, backgroundColor: "#007AFF" }}
+              style={{ width: `${pct}%`, backgroundColor: "var(--mn-accent)" }}
             />
           </div>
         </div>
@@ -713,7 +814,7 @@ function RescanSection() {
           onClick={handleRescan}
           disabled={scanning}
           className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: "#007AFF" }}
+          style={{ backgroundColor: "var(--mn-accent)" }}
         >
           {scanning ? "Scanning..." : "Rescan Now"}
         </button>
@@ -727,10 +828,98 @@ function RescanSection() {
   );
 }
 
+// --- Delete Account Section ---
+
+function DeleteAccountSection({ userEmail }: { userEmail: string }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/user/delete-account", { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete account");
+      signOut({ callbackUrl: "/login" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete account");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <h2 className="text-lg font-bold mb-2">Delete Account</h2>
+      <p className="text-sm mb-4" style={{ color: "var(--mn-muted)" }}>
+        Permanently delete your account and all associated data. This cannot be undone.
+      </p>
+
+      {error && (
+        <p className="text-sm text-red-500 mb-3">{error}</p>
+      )}
+
+      {!showConfirm ? (
+        <button
+          onClick={() => setShowConfirm(true)}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400"
+          style={{ border: "1px solid var(--mn-border)" }}
+        >
+          Delete My Account
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm" style={{ color: "var(--mn-muted)" }}>
+            Type <strong>{userEmail}</strong> to confirm:
+          </p>
+          <input
+            type="email"
+            value={confirmEmail}
+            onChange={(e) => setConfirmEmail(e.target.value)}
+            placeholder={userEmail}
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              backgroundColor: "var(--mn-bg)",
+              border: "1px solid var(--mn-border)",
+              color: "var(--mn-fg)",
+            }}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleDelete}
+              disabled={confirmEmail !== userEmail || deleting}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 disabled:opacity-40"
+            >
+              {deleting ? "Deleting..." : "Confirm Delete"}
+            </button>
+            <button
+              onClick={() => {
+                setShowConfirm(false);
+                setConfirmEmail("");
+                setError(null);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ color: "var(--mn-muted)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Settings Page ---
 
 export default function SettingsPage() {
   const { resetToDefaults } = useConfig();
+  const { data: session } = useSession();
+  const isAdminUser = session?.user?.role === "admin";
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleReset = () => {
@@ -745,7 +934,7 @@ export default function SettingsPage() {
           <Link
             href="/"
             className="text-sm font-medium mb-1 inline-block"
-            style={{ color: "#007AFF" }}
+            style={{ color: "var(--mn-accent)" }}
           >
             &larr; Back to news
           </Link>
@@ -753,10 +942,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <ThemeSection />
+      <AccentSection />
       <SourcesSection />
       <TagBarSection />
-      <AiTaggerSection />
-      <RescanSection />
+      {isAdminUser && <AiTaggerSection />}
+      {isAdminUser && <RescanSection />}
+      {isAdminUser && <AdminUsersSection />}
 
       {/* Reset to Defaults */}
       <div
@@ -793,6 +985,10 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {session?.user?.email && (
+        <DeleteAccountSection userEmail={session.user.email} />
+      )}
     </div>
   );
 }

@@ -14,8 +14,10 @@
   --mn-border: #E5E7EB;
   --mn-muted: #6B7280;
   --mn-muted2: #9CA3AF;
-  --mn-link: #2563EB;
-  --mn-link-hover: #1D4ED8;
+  --mn-accent: #007AFF;
+  --mn-accent-hover: #0066D6;
+  --mn-link: var(--mn-accent);
+  --mn-link-hover: var(--mn-accent-hover);
 }
 
 :root.dark {
@@ -25,8 +27,10 @@
   --mn-border: #3A3A3C;
   --mn-muted: #A1A1AA;
   --mn-muted2: #71717A;
-  --mn-link: #60A5FA;
-  --mn-link-hover: #93BBFD;
+  --mn-accent: #0A84FF;
+  --mn-accent-hover: #409CFF;
+  --mn-link: var(--mn-accent);
+  --mn-link-hover: var(--mn-accent-hover);
 }
 
 body {

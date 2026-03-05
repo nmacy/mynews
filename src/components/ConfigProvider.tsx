@@ -1,9 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import type { Source, UserConfig } from "@/types";
 import defaultConfig from "@/config/sources.json";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
+import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
+import { ACCENT_PALETTES } from "@/config/accents";
 
 const STORAGE_KEY = "mynews-config";
 const DISABLED_KEY = "mynews-disabled-sources";
@@ -22,6 +25,8 @@ interface ConfigContextValue {
   toggleSource: (id: string) => void;
   togglePaywall: (id: string) => void;
   setFeaturedTags: (slugs: string[]) => void;
+  saveTheme: (preference: ThemePreference) => void;
+  saveAccent: (accent: AccentId) => void;
   resetToDefaults: () => void;
 }
 
@@ -33,21 +38,20 @@ export function useConfig() {
   return ctx;
 }
 
+// --- localStorage helpers (guest mode) ---
+
 function loadConfig(): UserConfig {
   if (typeof window === "undefined") return defaultConfig as UserConfig;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as UserConfig;
-      return parsed;
-    }
+    if (stored) return JSON.parse(stored) as UserConfig;
   } catch {
-    // fall back to defaults
+    // fall back
   }
   return defaultConfig as UserConfig;
 }
 
-function saveConfig(config: UserConfig) {
+function saveConfigLocal(config: UserConfig) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch {
@@ -66,7 +70,7 @@ function loadDisabled(): Set<string> {
   return new Set();
 }
 
-function saveDisabled(disabled: Set<string>) {
+function saveDisabledLocal(disabled: Set<string>) {
   try {
     localStorage.setItem(DISABLED_KEY, JSON.stringify([...disabled]));
   } catch {
@@ -74,25 +78,120 @@ function saveDisabled(disabled: Set<string>) {
   }
 }
 
+// --- Server helpers (authenticated mode) ---
+
+async function fetchServerSettings(): Promise<{
+  sources: Source[];
+  featuredTags: string[];
+  disabledSourceIds: string[];
+  theme?: string;
+  accent?: string;
+} | null> {
+  try {
+    const res = await fetch("/api/user/settings");
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function saveServerSettings(data: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch("/api/user/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    // silent fail — next save will retry
+  }
+}
+
+const VALID_THEME_PREFS = new Set<string>(["light", "dark", "system"]);
+const VALID_ACCENT_IDS = new Set<string>(ACCENT_PALETTES.map((p) => p.id));
+
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
+  const { setTheme, setAccent } = useTheme();
+
   const [config, setConfig] = useState<UserConfig>(defaultConfig as UserConfig);
   const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
+  const [serverLoaded, setServerLoaded] = useState(false);
 
+  // Debounce timer for server saves
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load from localStorage on mount (always, for instant hydration)
   useEffect(() => {
     setConfig(loadConfig());
     setDisabledSources(loadDisabled());
     setMounted(true);
   }, []);
 
-  const persist = useCallback((next: UserConfig, disabled?: Set<string>) => {
-    setConfig(next);
-    saveConfig(next);
-    if (disabled !== undefined) {
-      setDisabledSources(disabled);
-      saveDisabled(disabled);
+  // When authenticated, load from server (overrides localStorage)
+  useEffect(() => {
+    if (!isAuthenticated || serverLoaded) return;
+
+    fetchServerSettings().then((data) => {
+      if (data) {
+        const hasSources = data.sources && data.sources.length > 0;
+        if (hasSources) {
+          setConfig({ sources: data.sources, featuredTags: data.featuredTags });
+          setDisabledSources(new Set(data.disabledSourceIds));
+        }
+        if (data.theme && VALID_THEME_PREFS.has(data.theme)) {
+          setTheme(data.theme as ThemePreference);
+        }
+        if (data.accent && VALID_ACCENT_IDS.has(data.accent)) {
+          setAccent(data.accent as AccentId);
+        }
+        // If server settings are empty, keep localStorage values
+        // (ImportSettingsPrompt will handle migration)
+      }
+      setServerLoaded(true);
+    });
+  }, [isAuthenticated, serverLoaded]);
+
+  // Reset server-loaded flag when auth status changes
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      setServerLoaded(false);
+      // Reload from localStorage when signing out
+      setConfig(loadConfig());
+      setDisabledSources(loadDisabled());
     }
-  }, []);
+  }, [status]);
+
+  const debouncedServerSave = useCallback(
+    (data: Record<string, unknown>) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => saveServerSettings(data), 500);
+    },
+    []
+  );
+
+  const persist = useCallback(
+    (next: UserConfig, disabled?: Set<string>) => {
+      setConfig(next);
+      const nextDisabled = disabled ?? disabledSources;
+      if (disabled !== undefined) setDisabledSources(disabled);
+
+      if (isAuthenticated) {
+        debouncedServerSave({
+          sources: next.sources,
+          featuredTags: next.featuredTags ?? [],
+          disabledSourceIds: [...nextDisabled],
+        });
+      } else {
+        saveConfigLocal(next);
+        if (disabled !== undefined) saveDisabledLocal(disabled);
+      }
+    },
+    [isAuthenticated, disabledSources, debouncedServerSave]
+  );
 
   const addSource = useCallback(
     (source: Source) => {
@@ -119,9 +218,14 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       if (next.has(id)) next.delete(id);
       else next.add(id);
       setDisabledSources(next);
-      saveDisabled(next);
+
+      if (isAuthenticated) {
+        debouncedServerSave({ disabledSourceIds: [...next] });
+      } else {
+        saveDisabledLocal(next);
+      }
     },
-    [disabledSources]
+    [disabledSources, isAuthenticated, debouncedServerSave]
   );
 
   const togglePaywall = useCallback(
@@ -143,18 +247,46 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     [config, persist]
   );
 
+  const saveTheme = useCallback(
+    (preference: ThemePreference) => {
+      if (isAuthenticated) {
+        debouncedServerSave({ theme: preference });
+      }
+    },
+    [isAuthenticated, debouncedServerSave]
+  );
+
+  const saveAccent = useCallback(
+    (accent: AccentId) => {
+      if (isAuthenticated) {
+        debouncedServerSave({ accent });
+      }
+    },
+    [isAuthenticated, debouncedServerSave]
+  );
+
   const resetToDefaults = useCallback(() => {
     const fresh = defaultConfig as UserConfig;
-    setConfig(fresh);
-    saveConfig(fresh);
     const empty = new Set<string>();
+    setConfig(fresh);
     setDisabledSources(empty);
-    saveDisabled(empty);
-  }, []);
+
+    if (isAuthenticated) {
+      debouncedServerSave({
+        sources: fresh.sources,
+        featuredTags: [],
+        disabledSourceIds: [],
+      });
+    } else {
+      saveConfigLocal(fresh);
+      saveDisabledLocal(empty);
+    }
+  }, [isAuthenticated, debouncedServerSave]);
 
   const effectiveConfig: UserConfig = mounted
     ? {
         sources: config.sources.filter((s) => !disabledSources.has(s.id)),
+        featuredTags: config.featuredTags,
       }
     : (defaultConfig as UserConfig);
 
@@ -170,6 +302,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         toggleSource,
         togglePaywall,
         setFeaturedTags,
+        saveTheme,
+        saveAccent,
         resetToDefaults,
       }}
     >

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 import { SearchBar } from "./SearchBar";
@@ -43,6 +44,95 @@ function SearchIcon() {
   );
 }
 
+function UserMenu() {
+  const { data: session } = useSession();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  if (!session?.user) {
+    return (
+      <Link
+        href="/login"
+        className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:opacity-80"
+        style={{ color: "var(--mn-accent)" }}
+      >
+        Sign in
+      </Link>
+    );
+  }
+
+  const initial = (session.user.name?.[0] || session.user.email?.[0] || "?").toUpperCase();
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
+        style={{ backgroundColor: "var(--mn-accent)" }}
+        aria-label="User menu"
+      >
+        {initial}
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 mt-2 w-56 rounded-xl shadow-lg py-1 z-50"
+          style={{
+            backgroundColor: "var(--mn-card)",
+            border: "1px solid var(--mn-border)",
+          }}
+        >
+          <div className="px-4 py-2 border-b" style={{ borderColor: "var(--mn-border)" }}>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-medium truncate">{session.user.name || session.user.email}</p>
+              {session.user.role === "admin" && (
+                <span
+                  className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded"
+                  style={{ backgroundColor: "var(--mn-accent)", color: "white" }}
+                >
+                  Admin
+                </span>
+              )}
+            </div>
+            {session.user.name && (
+              <p className="text-xs truncate" style={{ color: "var(--mn-muted)" }}>
+                {session.user.email}
+              </p>
+            )}
+          </div>
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 text-sm transition-colors hover:opacity-70"
+          >
+            Settings
+          </Link>
+          <button
+            onClick={() => {
+              setOpen(false);
+              signOut({ callbackUrl: "/" });
+            }}
+            className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-70"
+            style={{ color: "#EF4444" }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header() {
   const [isSearchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,7 +144,7 @@ export function Header() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "var(--mn-accent)" }}>
             <span className="text-white font-bold text-sm">N</span>
           </div>
           <span className="text-xl font-bold tracking-tight">MyNews</span>
@@ -77,6 +167,7 @@ export function Header() {
             <SearchIcon />
           </button>
           <ThemeToggle />
+          <UserMenu />
         </div>
       </div>
       <SearchBar

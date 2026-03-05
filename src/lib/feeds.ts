@@ -147,6 +147,5 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
 
-  await tryFillOgImages(unique);
   return unique;
 }

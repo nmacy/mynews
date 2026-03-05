@@ -39,12 +39,38 @@ body {
   color: var(--mn-fg);
 }
 
-/* Prose link colors for dark mode */
+/* Prose colors */
 .prose a {
   color: var(--mn-link);
 }
 .prose a:hover {
   color: var(--mn-link-hover);
+}
+
+.dark .prose {
+  --tw-prose-headings: var(--mn-fg);
+  --tw-prose-bold: var(--mn-fg);
+  --tw-prose-body: var(--mn-fg);
+  --tw-prose-counters: var(--mn-muted);
+  --tw-prose-bullets: var(--mn-muted);
+  --tw-prose-quotes: var(--mn-fg);
+  --tw-prose-quote-borders: var(--mn-border);
+  --tw-prose-captions: var(--mn-muted);
+  --tw-prose-code: var(--mn-fg);
+  --tw-prose-pre-bg: var(--mn-card);
+  --tw-prose-pre-code: var(--mn-fg);
+  --tw-prose-links: var(--mn-link);
+  --tw-prose-hr: var(--mn-border);
+  --tw-prose-th-borders: var(--mn-border);
+  --tw-prose-td-borders: var(--mn-border);
+}
+
+/* Force all article content to inherit theme colors */
+.dark .prose * {
+  color: inherit;
+}
+.dark .prose a {
+  color: var(--mn-link);
 }
 
 /* Hide scrollbar on category tabs */

@@ -68,6 +68,17 @@ export default function SourcePage() {
       .finally(() => setLoading(false));
   }, [source]);
 
+  useEffect(() => {
+    if (loading) return;
+    const savedY = sessionStorage.getItem("mn-scroll-y");
+    if (savedY) {
+      sessionStorage.removeItem("mn-scroll-y");
+      requestAnimationFrame(() => {
+        window.scrollTo(0, parseInt(savedY, 10));
+      });
+    }
+  }, [loading]);
+
   const { articles: taggedArticles } = useAiTagger(articles);
 
   if (!source) {

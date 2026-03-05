@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, fetchSource } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
 import { extractOgImage } from "@/lib/image-extractor";
+import { isSafeUrl } from "@/lib/url-validation";
+import { auth } from "@/lib/auth";
+import { isAdmin } from "@/lib/admin";
 import type { Article, Source } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +19,11 @@ export async function GET(request: NextRequest) {
     // Accept full source objects as JSON (for custom user-added sources)
     try {
       const sources = JSON.parse(sourcesParam) as Source[];
-      articles = await getArticlesForSources(sources);
+      const safeSources = sources.filter((s) => isSafeUrl(s.url));
+      if (safeSources.length === 0) {
+        return NextResponse.json({ error: "No valid source URLs" }, { status: 400 });
+      }
+      articles = await getArticlesForSources(safeSources);
     } catch {
       return NextResponse.json({ error: "Invalid sources param" }, { status: 400 });
     }
@@ -36,6 +43,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST() {
+  const session = await auth();
+  if (!isAdmin(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   clearCache();
   const sources = getSources();
   const total = sources.length;

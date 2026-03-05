@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+*.db
+*.db-journal
+.env
+.env.*
+.claude/
+CLAUDE.md
+README.md
+.dockerignore
+Dockerfile

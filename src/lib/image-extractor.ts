@@ -1,4 +1,5 @@
 import type { Item } from "rss-parser";
+import { isSafeUrl } from "./url-validation";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FeedItem = Item & { [key: string]: any };
@@ -41,6 +42,7 @@ export function extractImageFromItem(item: FeedItem): string | null {
 
 export async function extractOgImage(articleUrl: string): Promise<string | null> {
   if (!articleUrl || !articleUrl.startsWith("http")) return null;
+  if (!isSafeUrl(articleUrl)) return null;
   try {
     const ogs = (await import("open-graph-scraper")).default;
     const { result } = await ogs({

@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import DOMPurify from "isomorphic-dompurify";
 import { ArticleImage } from "@/components/articles/ArticleImage";
 import { TagBadge } from "@/components/ui/TagBadge";
 import { TimeAgo } from "@/components/ui/TimeAgo";
 import { getStoredArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
+
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    "p", "br", "b", "i", "em", "strong", "a", "ul", "ol", "li",
+    "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "img",
+    "figure", "figcaption", "pre", "code", "table", "thead",
+    "tbody", "tr", "th", "td", "div", "span", "hr", "sup", "sub",
+  ],
+  ALLOWED_ATTR: ["href", "src", "alt", "title"],
+  ALLOW_DATA_ATTR: false,
+};
 
 function ArticleDetailSkeleton() {
   return (
@@ -30,6 +41,7 @@ function ArticleDetailSkeleton() {
 
 export default function ArticlePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [article, setArticle] = useState<Article | null>(null);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
@@ -63,14 +75,37 @@ export default function ArticlePage() {
       .finally(() => setExtracting(false));
   }, [article?.url]);
 
+  const rawContent = fullContent ?? article?.content ?? "";
+  const displayContent = useMemo(
+    () => DOMPurify.sanitize(rawContent, PURIFY_CONFIG),
+    [rawContent]
+  );
+
   if (!article) {
     return <ArticleDetailSkeleton />;
   }
 
-  const displayContent = fullContent ?? article.content;
-
   return (
     <article className="max-w-3xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => router.back()}
+          className="font-medium text-sm hover:underline"
+          style={{ color: "var(--mn-link)" }}
+        >
+          &larr; Back to news
+        </button>
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-sm hover:underline"
+          style={{ color: "var(--mn-link)" }}
+        >
+          Read on {article.source.name} &rarr;
+        </a>
+      </div>
+
       <div className="mb-6">
         {(article.tags ?? []).length > 0 && (
           <div className="flex items-center gap-2 mb-3">
@@ -155,27 +190,25 @@ export default function ArticlePage() {
         dangerouslySetInnerHTML={{ __html: displayContent }}
       />
 
-      <div
-        className="mt-10 pt-6 flex items-center justify-between"
-        style={{ borderTop: "1px solid var(--mn-border)" }}
-      >
-        <Link
-          href="/"
+      <div className="flex items-center justify-between mt-10 pt-6" style={{ borderTop: "1px solid var(--mn-border)" }}>
+        <button
+          onClick={() => router.back()}
           className="font-medium text-sm hover:underline"
-            style={{ color: "var(--mn-link)" }}
+          style={{ color: "var(--mn-link)" }}
         >
           &larr; Back to news
-        </Link>
+        </button>
         <a
           href={article.url}
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-sm hover:underline"
-            style={{ color: "var(--mn-link)" }}
+          style={{ color: "var(--mn-link)" }}
         >
           Read on {article.source.name} &rarr;
         </a>
       </div>
+
     </article>
   );
 }

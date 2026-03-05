@@ -40,10 +40,3 @@ export interface Article {
 }
 
 export type AiProvider = "anthropic" | "openai" | "gemini" | "openrouter";
-
-export interface AiTaggerConfig {
-  enabled: boolean;
-  provider: AiProvider;
-  apiKey: string;
-  model: string;
-}

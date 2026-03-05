@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { extract } from "@extractus/article-extractor";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
+import { marked } from "marked";
+import { isSafeUrl } from "@/lib/url-validation";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -38,14 +41,210 @@ const CONTENT_SELECTORS = [
   ".content-body",
 ];
 
-/** Strip non-content elements from a cloned container */
-function stripNonContent(el: Element) {
-  const remove = el.querySelectorAll(
-    "script, style, nav, aside, .ad, .ad-wrapper, .sidebar, " +
-    ".social-share, .related-posts, .newsletter, .comments, " +
-    "figure figcaption, .image-credit"
-  );
-  for (const r of remove) r.remove();
+/** Clean extracted HTML: remove non-content artifacts from all strategies */
+function cleanExtractedHtml(html: string): string {
+  const dom = new JSDOM(`<body>${html}</body>`);
+  const doc = dom.window.document;
+  const body = doc.body;
+
+  // Pass 1 — Remove by selector
+  const junkSelectors = [
+    "nav", "aside", "footer", "header", "form", "button", "input", "select", "textarea",
+    '[role="navigation"]', '[role="complementary"]', '[role="banner"]',
+    '[role="dialog"]', '[role="alertdialog"]', '[role="status"]', '[role="alert"]',
+    '[aria-live]', '[aria-hidden="true"]',
+    "script", "style", "iframe", "svg", "noscript",
+    "template", "video", "audio", "source", "track", "canvas",
+    "time",
+    ".ad", ".advertisement", ".sidebar",
+    ".social-share", ".share-buttons", ".sharing",
+    ".related-posts", ".related-articles", ".recommended",
+    ".newsletter", ".subscribe", ".signup",
+    ".comments", ".comment-section",
+    ".author-bio", ".author-info", ".author-card",
+    ".breadcrumb", ".breadcrumbs",
+    ".paywall", ".image-credit", ".photo-credit",
+  ];
+  for (const el of body.querySelectorAll(junkSelectors.join(", "))) {
+    el.remove();
+  }
+
+  // Pass 1b — Remove skip-to-content / skip-nav links
+  for (const a of body.querySelectorAll("a[href^='#']")) {
+    const text = a.textContent?.trim() ?? "";
+    if (/skip\s+(to\s+)?(main\s+)?content/i.test(text) || /skip\s+nav/i.test(text)) {
+      a.remove();
+    }
+  }
+
+  // Pass 2 — Remove custom web components (hyphenated tag names like nyt-betamax)
+  for (const el of body.querySelectorAll("*")) {
+    if (!el.parentNode) continue;
+    if (el.tagName.includes("-")) {
+      el.remove();
+    }
+  }
+
+  // Pass 3 — Remove by class/id pattern matching
+  const junkPattern = /\b(ad[-_]|social|share|related|recommend|newsletter|subscribe|signup|comment|breadcrumb|sidebar|promo|popup|modal|widget|footer[-_]|nav[-_]|menu|paywall|truncat|optimistic)\b/i;
+  for (const el of body.querySelectorAll("*")) {
+    if (!el.parentNode) continue;
+    const cn = el.className;
+    const id = el.id;
+    const testId = el.getAttribute("data-testid") ?? "";
+    if (junkPattern.test(cn) || junkPattern.test(id) || junkPattern.test(testId)) {
+      el.remove();
+    }
+  }
+
+  // Pass 4 — Remove junk images
+  const trackingDomains = /doubleclick|pixel|tracking|beacon|analytics/i;
+  for (const img of body.querySelectorAll("img")) {
+    const src = img.getAttribute("src") ?? "";
+    const width = img.getAttribute("width");
+    const height = img.getAttribute("height");
+    if (
+      !src ||
+      trackingDomains.test(src) ||
+      width === "1" || height === "1"
+    ) {
+      img.remove();
+    }
+  }
+
+  // Pass 5 — Remove elements with junk text (ads, paywall CTAs, labels, follow prompts)
+  const labelPattern = /^\s*(advertisements?|skip\s+ad(vertisement)?s?|video|image|credit)\s*$/i;
+  const paywallPattern = /thank\s+you\s+for\s+your\s+patience|verify(ing)?\s+(your\s+)?access|already\s+a\s+subscriber|want\s+all\s+of\s+the\s+times|you\s+have\s+.{0,20}preview|checking\s+(your\s+)?access|full\s+article\s+.{0,20}will\s+load|sign\s+up\s+(for|to)\s+(free|full)|subscribe\s+(now|for\s+all)|unlock\s+(this|the\s+full)|free\s+(trial|article)|reader\s+mode\s+.{0,20}(exit|log\s*in)/i;
+  const ctaPattern = /follow\s+(topics?|authors?|this\s+story)|see\s+more\s+like\s+this|personalized\s+homepage|receive\s+email\s+updates/i;
+  for (const el of body.querySelectorAll("p, div, span, a, li")) {
+    if (!el.parentNode) continue;
+    const text = el.textContent?.trim() ?? "";
+    if (!text) continue;
+    if (labelPattern.test(text)) { el.remove(); continue; }
+    if (text.length < 300 && paywallPattern.test(text)) { el.remove(); continue; }
+    if (text.length < 300 && ctaPattern.test(text)) { el.remove(); }
+  }
+
+  // Pass 5b — Remove empty list items and lists that become empty
+  for (const li of body.querySelectorAll("li")) {
+    if (!li.parentNode) continue;
+    if ((li.textContent?.trim() ?? "") === "" && !li.querySelector("img")) {
+      li.remove();
+    }
+  }
+  for (const list of body.querySelectorAll("ul, ol")) {
+    if (!list.parentNode) continue;
+    if (list.querySelectorAll("li").length === 0) {
+      list.remove();
+    }
+  }
+
+  // Pass 6 — Remove author byline blocks and metadata
+  for (const el of body.querySelectorAll("[itemprop], [rel='author']")) {
+    if (!el.parentNode) continue;
+    el.remove();
+  }
+  // Remove interactive role="button" spans (author popovers, follow buttons, etc.)
+  for (const el of body.querySelectorAll('[role="button"]')) {
+    if (!el.parentNode) continue;
+    el.remove();
+  }
+  // Remove "By ..." / "Reporting from ..." / "is a (senior)? reporter/writer/editor" short paragraphs
+  const bylinePattern = /^\s*(by\s|reporting\s+from\s|visuals?\s+by\s|photographs?\s+by\s|written\s+by\s|edited\s+by\s)/i;
+  const authorBioPattern = /\bis\s+a\s+(senior\s+)?(reporter|writer|editor|correspondent|columnist|journalist)\b/i;
+  for (const el of body.querySelectorAll("p, div, span")) {
+    if (!el.parentNode) continue;
+    const text = el.textContent?.trim() ?? "";
+    if (!text) continue;
+    if (text.length < 150 && bylinePattern.test(text)) { el.remove(); continue; }
+    if (text.length < 300 && authorBioPattern.test(text)) { el.remove(); continue; }
+    // Remove orphaned "by" fragments (leftover after author name removal)
+    if (/^\s*by\s*$/i.test(text)) { el.remove(); }
+  }
+
+  // Pass 7 — Remove figcaptions that are just photo credits
+  for (const el of body.querySelectorAll("figcaption")) {
+    if (!el.parentNode) continue;
+    const text = el.textContent?.trim() ?? "";
+    if (/^credit/i.test(text) || /\bcredit\s*\.\.\./i.test(text)) {
+      el.remove();
+    }
+  }
+
+  // Pass 8 — Remove figures with no img (empty video/media placeholders)
+  for (const el of body.querySelectorAll("figure")) {
+    if (!el.parentNode) continue;
+    if (!el.querySelector("img")) {
+      el.remove();
+    }
+  }
+
+  // Pass 9 — Remove empty containers (repeat until stable)
+  const emptyTags = new Set(["DIV", "SPAN", "SECTION", "ARTICLE", "FIGURE"]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const el of body.querySelectorAll("div, span, section, article, figure")) {
+      if (!el.parentNode) continue;
+      if (
+        emptyTags.has(el.tagName) &&
+        !el.querySelector("img") &&
+        (el.textContent?.trim() ?? "") === ""
+      ) {
+        el.remove();
+        changed = true;
+      }
+    }
+  }
+
+  // Pass 10 — Strip class, id, style, and data-* attributes (source-site styling bleeds through)
+  for (const el of body.querySelectorAll("*")) {
+    el.removeAttribute("class");
+    el.removeAttribute("id");
+    el.removeAttribute("style");
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith("data-")) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+
+  // Pass 11 — Deduplicate images (same src appearing multiple times)
+  const seenSrcs = new Set<string>();
+  for (const img of body.querySelectorAll("img")) {
+    const src = img.getAttribute("src") ?? "";
+    if (!src) continue;
+    if (seenSrcs.has(src)) {
+      img.remove();
+    } else {
+      seenSrcs.add(src);
+    }
+  }
+
+  // Pass 12 — Deduplicate paragraphs (same text content appearing multiple times)
+  const seenTexts = new Set<string>();
+  for (const el of body.querySelectorAll("p, h1, h2, h3, h4, h5, h6")) {
+    if (!el.parentNode) continue;
+    const text = el.textContent?.trim() ?? "";
+    if (text.length < 20) continue; // skip short fragments
+    if (seenTexts.has(text)) {
+      el.remove();
+    } else {
+      seenTexts.add(text);
+    }
+  }
+
+  // Pass 13 — Remove small author avatar images (tiny width/height attributes or small srcset)
+  for (const img of body.querySelectorAll("img")) {
+    if (!img.parentNode) continue;
+    const w = parseInt(img.getAttribute("width") ?? "0", 10);
+    const h = parseInt(img.getAttribute("height") ?? "0", 10);
+    if ((w > 0 && w <= 96) || (h > 0 && h <= 96)) {
+      img.remove();
+    }
+  }
+
+  return body.innerHTML;
 }
 
 /** Try @extractus/article-extractor with browser headers */
@@ -90,9 +289,7 @@ async function tryDomStrategies(url: string): Promise<ExtractionResult | null> {
 
       let merged = "";
       for (const container of containers) {
-        const clone = container.cloneNode(true) as Element;
-        stripNonContent(clone);
-        merged += clone.innerHTML.trim();
+        merged += container.innerHTML.trim();
       }
 
       if (merged.length > 200) {
@@ -167,10 +364,56 @@ async function tryAmpCache(url: string): Promise<ExtractionResult | null> {
   return null;
 }
 
+/** Fallback: use Jina Reader API to extract JS-rendered pages */
+async function tryJinaReader(url: string): Promise<ExtractionResult | null> {
+  const res = await fetch(`https://r.jina.ai/${url}`, {
+    headers: {
+      Accept: "text/plain",
+      "User-Agent": BROWSER_UA,
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) return null;
+
+  const markdown = await res.text();
+  if (markdown.length < 100) return null;
+
+  // Extract title from first markdown heading if present
+  const titleMatch = markdown.match(/^#\s+(.+)$/m);
+  const title = titleMatch?.[1]?.trim() ?? null;
+
+  // Convert markdown to HTML
+  const html = await marked.parse(markdown);
+  if (html.length < 100) return null;
+
+  return {
+    title,
+    content: html,
+    author: null,
+    published: null,
+    image: null,
+    ttr: null,
+  };
+}
+
+// 20 extractions per minute per IP
+const EXTRACT_LIMIT = 20;
+const EXTRACT_WINDOW_MS = 60 * 1000;
+
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rl = checkRateLimit(`extract:${ip}`, EXTRACT_LIMIT, EXTRACT_WINDOW_MS);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const url = request.nextUrl.searchParams.get("url");
   if (!url) {
     return NextResponse.json({ error: "Missing url param" }, { status: 400 });
+  }
+
+  if (!isSafeUrl(url)) {
+    return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
   }
 
   try {
@@ -188,22 +431,39 @@ export async function GET(request: NextRequest) {
     if (results.length > 0) {
       results.sort((a, b) => b.content.length - a.content.length);
       const best = results[0];
-      // Merge metadata from extractus if it had richer fields
-      const meta = extractResult ?? best;
-      return NextResponse.json({
-        title: meta.title ?? best.title,
-        content: best.content,
-        author: meta.author ?? best.author,
-        published: meta.published ?? best.published,
-        image: meta.image ?? best.image,
-        ttr: meta.ttr ?? best.ttr,
-      });
+      const cleaned = cleanExtractedHtml(best.content);
+      // If cleaning stripped everything, treat as failed extraction
+      if (cleaned.replace(/<[^>]*>/g, "").trim().length < 50) {
+        // fall through to AMP / 422
+      } else {
+        const meta = extractResult ?? best;
+        return NextResponse.json({
+          title: meta.title ?? best.title,
+          content: cleaned,
+          author: meta.author ?? best.author,
+          published: meta.published ?? best.published,
+          image: meta.image ?? best.image,
+          ttr: meta.ttr ?? best.ttr,
+        });
+      }
     }
 
-    // Fallback: Google AMP cache
+    // Fallback 1: Google AMP cache
     const ampResult = await tryAmpCache(url).catch(() => null);
     if (ampResult) {
-      return NextResponse.json(ampResult);
+      const cleaned = cleanExtractedHtml(ampResult.content);
+      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
+        return NextResponse.json({ ...ampResult, content: cleaned });
+      }
+    }
+
+    // Fallback 2: Jina Reader API (handles JS-rendered pages)
+    const jinaResult = await tryJinaReader(url).catch(() => null);
+    if (jinaResult) {
+      const cleaned = cleanExtractedHtml(jinaResult.content);
+      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
+        return NextResponse.json({ ...jinaResult, content: cleaned });
+      }
     }
 
     return NextResponse.json({ error: "Could not extract article" }, { status: 422 });

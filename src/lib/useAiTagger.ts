@@ -1,32 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AI_PROVIDER_MAP } from "@/config/ai-providers";
-import type { AiTaggerConfig, Article } from "@/types";
-
-const STORAGE_KEY = "mynews-tagger-config";
-
-const DEFAULT_CONFIG: AiTaggerConfig = {
-  enabled: false,
-  provider: "anthropic",
-  apiKey: "",
-  model: "claude-haiku-4-5-20251001",
-};
-
-export function loadTaggerConfig(): AiTaggerConfig {
-  if (typeof window === "undefined") return DEFAULT_CONFIG;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_CONFIG;
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
-}
-
-export function saveTaggerConfig(config: AiTaggerConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Article } from "@/types";
 
 const TAG_CACHE_KEY = "mynews-ai-tags";
 
@@ -48,7 +23,7 @@ function saveToTagCache(newTags: Record<string, string[]>): void {
       JSON.stringify({ ...existing, ...newTags })
     );
   } catch {
-    // localStorage full or unavailable — ignore
+    // localStorage full or unavailable
   }
 }
 
@@ -60,7 +35,7 @@ function hashIds(articles: Article[]): string {
 
 async function fetchBatch(
   articles: Article[],
-  config: { provider: string; apiKey: string; model: string },
+  config: { provider: string; model: string },
   signal: AbortSignal
 ): Promise<Record<string, string[]>> {
   const res = await fetch("/api/tags", {
@@ -73,7 +48,6 @@ async function fetchBatch(
         description: a.description,
       })),
       provider: config.provider,
-      apiKey: config.apiKey,
       model: config.model,
     }),
     signal,
@@ -87,7 +61,7 @@ async function fetchBatch(
 
 async function tagAllBatches(
   articles: Article[],
-  config: { provider: string; apiKey: string; model: string },
+  config: { provider: string; model: string },
   signal: AbortSignal
 ): Promise<Record<string, string[]>> {
   const allTags: Record<string, string[]> = {};
@@ -101,7 +75,6 @@ async function tagAllBatches(
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") throw err;
       console.warn(`[ai-tagger] Batch ${i / BATCH_SIZE + 1} failed:`, err);
-      // Continue with remaining batches instead of losing everything
     }
   }
 
@@ -118,15 +91,23 @@ export function useAiTagger(articles: Article[]): {
   const [error, setError] = useState<string | null>(null);
   const lastBatchRef = useRef<string>("");
   const abortRef = useRef<AbortController | null>(null);
+  const [aiStatus, setAiStatus] = useState<{
+    enabled: boolean;
+    provider?: string;
+    model?: string;
+  } | null>(null);
+
+  // Fetch AI status on mount
+  useEffect(() => {
+    fetch("/api/ai-status")
+      .then((r) => r.json())
+      .then(setAiStatus)
+      .catch(() => setAiStatus({ enabled: false }));
+  }, []);
 
   useEffect(() => {
+    if (!aiStatus?.enabled || !aiStatus.provider || !aiStatus.model) return;
     if (articles.length === 0) return;
-
-    const config = loadTaggerConfig();
-    if (!config.enabled || !config.apiKey) return;
-
-    const model = config.model || AI_PROVIDER_MAP.get(config.provider)?.defaultModel;
-    if (!model) return;
 
     const batchHash = hashIds(articles);
     if (batchHash === lastBatchRef.current) return;
@@ -134,7 +115,6 @@ export function useAiTagger(articles: Article[]): {
     const cached = loadTagCache();
     const uncached = articles.filter((a) => !cached[a.id]);
 
-    // All articles already cached — no API call needed
     if (uncached.length === 0) {
       lastBatchRef.current = batchHash;
       setAiTags((prev) => ({ ...prev, ...cached }));
@@ -148,7 +128,7 @@ export function useAiTagger(articles: Article[]): {
     setIsTagging(true);
     setError(null);
 
-    const batchConfig = { provider: config.provider, apiKey: config.apiKey, model };
+    const batchConfig = { provider: aiStatus.provider, model: aiStatus.model };
 
     tagAllBatches(uncached, batchConfig, controller.signal)
       .then((tags) => {
@@ -169,13 +149,17 @@ export function useAiTagger(articles: Article[]): {
       .finally(() => setIsTagging(false));
 
     return () => controller.abort();
-  }, [articles]);
+  }, [articles, aiStatus]);
 
-  const merged = articles.map((article) => {
-    const tags = aiTags[article.id];
-    if (!tags || tags.length === 0) return article;
-    return { ...article, tags, _aiTagged: true };
-  });
+  const merged = useMemo(
+    () =>
+      articles.map((article) => {
+        const tags = aiTags[article.id];
+        if (!tags || tags.length === 0) return article;
+        return { ...article, tags, _aiTagged: true };
+      }),
+    [articles, aiTags]
+  );
 
   return { articles: merged, isTagging, error };
 }

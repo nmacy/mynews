@@ -15,7 +15,7 @@ export function HeroArticle({ article }: { article: Article }) {
   return (
     <Link
       href={`/article/${article.id}`}
-      onClick={() => storeArticle(article)}
+      onClick={() => { sessionStorage.setItem("mn-scroll-y", String(window.scrollY)); storeArticle(article); }}
       className="block relative w-full aspect-[2/1] sm:aspect-[3/1] rounded-2xl overflow-hidden group mb-8"
     >
       <ArticleImage

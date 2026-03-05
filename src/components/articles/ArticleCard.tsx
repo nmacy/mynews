@@ -15,7 +15,7 @@ export function ArticleCard({ article }: { article: Article }) {
   return (
     <Link
       href={`/article/${article.id}`}
-      onClick={() => storeArticle(article)}
+      onClick={() => { sessionStorage.setItem("mn-scroll-y", String(window.scrollY)); storeArticle(article); }}
       className="block rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
       style={{ backgroundColor: "var(--mn-card)" }}
     >

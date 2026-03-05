@@ -67,6 +67,17 @@ function HomeContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourcesKey]);
 
+  useEffect(() => {
+    if (loading) return;
+    const savedY = sessionStorage.getItem("mn-scroll-y");
+    if (savedY) {
+      sessionStorage.removeItem("mn-scroll-y");
+      requestAnimationFrame(() => {
+        window.scrollTo(0, parseInt(savedY, 10));
+      });
+    }
+  }, [loading]);
+
   const { articles: taggedArticles, isTagging, error: aiError } = useAiTagger(articles);
 
   // Apply search query first, then pass to filter hook

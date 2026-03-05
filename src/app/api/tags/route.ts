@@ -1,11 +1,34 @@
 import { NextResponse } from "next/server";
 import { tagArticlesWithAi } from "@/lib/ai-tagger";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { decrypt } from "@/lib/encryption";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { AiProvider } from "@/types";
 
 const VALID_PROVIDERS = new Set(["anthropic", "openai", "gemini", "openrouter"]);
 const MAX_ARTICLES = 100;
 
+// 10 tagging requests per minute per user
+const TAG_LIMIT = 10;
+const TAG_WINDOW_MS = 60 * 1000;
+
 export async function POST(request: Request) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json(
+      { tags: {}, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const rl = checkRateLimit(`tags:${session.user.id}`, TAG_LIMIT, TAG_WINDOW_MS);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { tags: {}, error: "Too many requests" },
+      { status: 429 }
+    );
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -16,10 +39,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const { articles, provider, apiKey, model } = body as {
+  const { articles, provider, model: bodyModel } = body as {
     articles?: unknown;
     provider?: string;
-    apiKey?: string;
     model?: string;
   };
 
@@ -44,16 +66,41 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!apiKey || typeof apiKey !== "string") {
+  // Resolve API key from server-level config
+  const stored = await prisma.serverApiKey.findUnique({
+    where: { provider },
+  });
+
+  if (!stored || !stored.enabled) {
     return NextResponse.json(
-      { tags: {}, error: "API key is required" },
+      { tags: {}, error: "AI tagging not configured" },
       { status: 400 }
     );
   }
 
+  let apiKey: string;
+  try {
+    apiKey = decrypt(stored.encryptedKey, stored.iv, stored.authTag);
+  } catch {
+    return NextResponse.json(
+      { tags: {}, error: "Failed to decrypt server API key" },
+      { status: 500 }
+    );
+  }
+
+  const model = bodyModel || stored.model;
+
   if (!model || typeof model !== "string") {
     return NextResponse.json(
       { tags: {}, error: "Model is required" },
+      { status: 400 }
+    );
+  }
+
+  // Validate model name to prevent path traversal
+  if (!/^[a-zA-Z0-9._\-/:]+$/.test(model)) {
+    return NextResponse.json(
+      { tags: {}, error: "Invalid model name" },
       { status: 400 }
     );
   }
@@ -73,7 +120,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ tags });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "AI tagging failed";
-    return NextResponse.json({ tags: {}, error: message });
+    console.error("[ai-tagger]", err);
+    return NextResponse.json({ tags: {}, error: "AI tagging failed" }, { status: 500 });
   }
 }

@@ -37,9 +37,10 @@ export function AiTaggerSection() {
   // Load server keys
   useEffect(() => {
     fetch("/api/admin/api-keys")
-      .then((r) => r.json())
-      .then((data: ServerKeyInfo[]) => {
-        setKeys(data);
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setKeys(data as ServerKeyInfo[]);
         const active = data.find((k) => k.enabled);
         if (active) {
           setForm({

@@ -140,7 +140,8 @@ function cleanExtractedHtml(html: string): string {
   }
 
   // Pass 6 — Remove author byline blocks and metadata
-  for (const el of body.querySelectorAll("[itemprop], [rel='author']")) {
+  // Skip itemprop="articleBody" since that's the main content container
+  for (const el of body.querySelectorAll("[itemprop]:not([itemprop='articleBody']), [rel='author']")) {
     if (!el.parentNode) continue;
     el.remove();
   }

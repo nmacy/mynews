@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { marked } from "marked";
 import { isSafeUrl } from "@/lib/url-validation";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { getCachedExtraction, setCachedExtraction } from "@/lib/extraction-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -418,6 +419,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Check extraction cache first
+    const cached = await getCachedExtraction(url).catch(() => null);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
     // Run extractus and DOM strategies in parallel, pick the best
     const [extractResult, domResult] = await Promise.all([
       tryExtractus(url).catch(() => null),
@@ -438,14 +445,16 @@ export async function GET(request: NextRequest) {
         // fall through to AMP / 422
       } else {
         const meta = extractResult ?? best;
-        return NextResponse.json({
+        const result = {
           title: meta.title ?? best.title,
           content: cleaned,
           author: meta.author ?? best.author,
           published: meta.published ?? best.published,
           image: meta.image ?? best.image,
           ttr: meta.ttr ?? best.ttr,
-        });
+        };
+        setCachedExtraction(url, result).catch(() => {});
+        return NextResponse.json(result);
       }
     }
 
@@ -454,7 +463,9 @@ export async function GET(request: NextRequest) {
     if (ampResult) {
       const cleaned = cleanExtractedHtml(ampResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        return NextResponse.json({ ...ampResult, content: cleaned });
+        const result = { ...ampResult, content: cleaned };
+        setCachedExtraction(url, result).catch(() => {});
+        return NextResponse.json(result);
       }
     }
 
@@ -463,7 +474,9 @@ export async function GET(request: NextRequest) {
     if (jinaResult) {
       const cleaned = cleanExtractedHtml(jinaResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        return NextResponse.json({ ...jinaResult, content: cleaned });
+        const result = { ...jinaResult, content: cleaned };
+        setCachedExtraction(url, result).catch(() => {});
+        return NextResponse.json(result);
       }
     }
 

@@ -120,9 +120,13 @@ export function getSources() {
 
 /**
  * Fetch articles only from the provided source list (for user-customized configs).
- * Does NOT use the shared cache — each unique source set gets fresh results.
+ * Caches by a key derived from the sorted source IDs.
  */
 export async function getArticlesForSources(sources: Source[]): Promise<Article[]> {
+  const cacheKey = `articles:${sources.map((s) => s.id).sort().join(",")}`;
+  const cached = getCached<Article[]>(cacheKey);
+  if (cached) return cached;
+
   const results = await Promise.allSettled(
     sources.map((source) => fetchSource(source))
   );
@@ -147,5 +151,6 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
 
+  setCache(cacheKey, unique);
   return unique;
 }

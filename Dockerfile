@@ -36,8 +36,8 @@ RUN npm install --no-save prisma@6.19.2
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-# SQLite data directory
-RUN mkdir -p /data && chown nextjs:nodejs /data
+# SQLite data directory + Next.js image cache
+RUN mkdir -p /data .next/cache && chown -R nextjs:nodejs /data .next/cache
 
 USER nextjs
 

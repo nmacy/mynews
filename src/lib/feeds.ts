@@ -3,6 +3,8 @@ import { getCached, setCache } from "./cache";
 import { generateArticleId, stripHtml, truncate } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
+import { getCustomTags } from "./custom-tags";
+import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import type { Article, Source, SourcesConfig } from "@/types";
 
@@ -20,12 +22,47 @@ const parser = new Parser({
 });
 
 const ALL_ARTICLES_KEY = "all-articles";
+const FAILED_SOURCES_KEY = "failed-sources";
 const OG_CONCURRENCY = 10; // max concurrent OG requests
 
 /** Track in-flight OG fill jobs so we don't double-trigger */
 const ogFillInFlight = new Set<string>();
 
-export async function fetchSource(source: Source): Promise<Article[]> {
+/** Validate that a URL serves a parseable RSS/Atom feed. */
+export async function validateRssFeed(
+  url: string,
+  timeoutMs = 5000,
+): Promise<{ valid: boolean; itemCount: number }> {
+  try {
+    const result = await Promise.race([
+      parser.parseURL(url).then((feed) => ({
+        valid: feed.items.length > 0,
+        itemCount: feed.items.length,
+      })),
+      new Promise<{ valid: false; itemCount: 0 }>((resolve) =>
+        setTimeout(() => resolve({ valid: false, itemCount: 0 }), timeoutMs)
+      ),
+    ]);
+    return result;
+  } catch {
+    return { valid: false, itemCount: 0 };
+  }
+}
+
+export interface FailedSource {
+  name: string;
+  url: string;
+  reason: string;
+}
+
+export function getFailedSources(cacheKey: string): FailedSource[] {
+  return getCached<FailedSource[]>(`${FAILED_SOURCES_KEY}:${cacheKey}`) ?? [];
+}
+
+export async function fetchSource(
+  source: Source,
+  extraTags?: TagDefinition[],
+): Promise<Article[]> {
   try {
     const feed = await parser.parseURL(source.url);
     const articles: Article[] = [];
@@ -52,7 +89,7 @@ export async function fetchSource(source: Source): Promise<Article[]> {
         publishedAt: item.isoDate ?? item.pubDate ?? new Date().toISOString(),
         source: { id: source.id, name: source.name },
         categories: [],
-        tags: assignTags({ title, description: desc }),
+        tags: assignTags({ title, description: desc }, extraTags),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
       });
@@ -61,7 +98,7 @@ export async function fetchSource(source: Source): Promise<Article[]> {
     return articles;
   } catch (error) {
     console.error(`Failed to fetch ${source.name} (${source.url}):`, error);
-    return [];
+    throw error;
   }
 }
 
@@ -97,15 +134,31 @@ export async function getAllArticles(): Promise<Article[]> {
   const cached = getCached<Article[]>(ALL_ARTICLES_KEY);
   if (cached) return cached;
 
+  const customTags = await getCustomTags();
+
   const results = await Promise.allSettled(
-    config.sources.map((source) => fetchSource(source))
+    config.sources.map((source) => fetchSource(source, customTags))
   );
 
   const articles: Article[] = [];
-  for (const result of results) {
+  const failed: FailedSource[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
     if (result.status === "fulfilled") {
       articles.push(...result.value);
+    } else {
+      const source = config.sources[i];
+      failed.push({
+        name: source.name,
+        url: source.url,
+        reason: result.reason instanceof Error ? result.reason.message : "Failed to fetch",
+      });
     }
+  }
+
+  if (failed.length > 0) {
+    setCache(`${FAILED_SOURCES_KEY}:${ALL_ARTICLES_KEY}`, failed);
   }
 
   // Deduplicate by URL
@@ -144,15 +197,31 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
   const cached = getCached<Article[]>(cacheKey);
   if (cached) return cached;
 
+  const customTags = await getCustomTags();
+
   const results = await Promise.allSettled(
-    sources.map((source) => fetchSource(source))
+    sources.map((source) => fetchSource(source, customTags))
   );
 
   const articles: Article[] = [];
-  for (const result of results) {
+  const failed: FailedSource[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
     if (result.status === "fulfilled") {
       articles.push(...result.value);
+    } else {
+      const source = sources[i];
+      failed.push({
+        name: source.name,
+        url: source.url,
+        reason: result.reason instanceof Error ? result.reason.message : "Failed to fetch",
+      });
     }
+  }
+
+  if (failed.length > 0) {
+    setCache(`${FAILED_SOURCES_KEY}:${cacheKey}`, failed);
   }
 
   // Deduplicate by URL

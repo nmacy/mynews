@@ -156,7 +156,8 @@ export function useAiTagger(articles: Article[]): {
       articles.map((article) => {
         const tags = aiTags[article.id];
         if (!tags || tags.length === 0) return article;
-        return { ...article, tags, _aiTagged: true };
+        const merged = Array.from(new Set([...(article.tags ?? []), ...tags]));
+        return { ...article, tags: merged, _aiTagged: true };
       }),
     [articles, aiTags]
   );

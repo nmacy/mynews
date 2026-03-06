@@ -7,6 +7,7 @@ import { ConfigProvider } from "@/components/ConfigProvider";
 import { Header } from "@/components/layout/Header";
 import { TagTabs } from "@/components/layout/TagTabs";
 import { ImportSettingsPrompt } from "@/components/ImportSettingsPrompt";
+import { TagProvider } from "@/components/TagProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -53,12 +54,14 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <ConfigProvider>
-              <Header />
-              <TagTabs />
-              <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {children}
-              </main>
-              <ImportSettingsPrompt />
+              <TagProvider>
+                <Header />
+                <TagTabs />
+                <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                  {children}
+                </main>
+                <ImportSettingsPrompt />
+              </TagProvider>
             </ConfigProvider>
           </AuthProvider>
         </ThemeProvider>

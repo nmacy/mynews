@@ -61,6 +61,15 @@ model ServerApiKey {
   updatedAt    DateTime @updatedAt
 }
 
+model CustomTag {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  label     String
+  color     String
+  parent    String?
+  createdAt DateTime @default(now())
+}
+
 model CachedExtraction {
   id        String   @id @default(cuid())
   url       String   @unique

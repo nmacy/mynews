@@ -60,15 +60,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.roleCheckedAt = Date.now();
       } else if (token.id) {
         // Periodically re-validate role + username from DB
-        const lastChecked = token.roleCheckedAt || 0;
+        const lastChecked = (token.roleCheckedAt as number) || 0;
         if (Date.now() - lastChecked > ROLE_REFRESH_INTERVAL_MS) {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { role: true, username: true },
-          });
-          token.role = dbUser?.role ?? "user";
-          token.username = dbUser?.username ?? (token.username as string);
-          token.roleCheckedAt = Date.now();
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { role: true, username: true },
+            });
+            token.role = dbUser?.role ?? "user";
+            token.username = dbUser?.username ?? (token.username as string);
+            token.roleCheckedAt = Date.now();
+          } catch {
+            // DB query failed (transient error, hot reload, etc.)
+            // Keep existing token values — don't invalidate the session
+          }
         }
       }
       return token;

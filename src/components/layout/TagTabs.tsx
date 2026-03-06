@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { TAG_MAP } from "@/config/tags";
 import { useConfig } from "@/components/ConfigProvider";
+import { useTagMap } from "@/components/TagProvider";
 
 export const DEFAULT_FEATURED_TAGS = [
   "technology",
@@ -24,6 +24,7 @@ export function TagTabs() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const { featuredTags } = useConfig();
+  const TAG_MAP = useTagMap();
 
   const activeSlug =
     pathname === "/" ? null : pathname.startsWith("/tag/") ? pathname.split("/")[2] : null;

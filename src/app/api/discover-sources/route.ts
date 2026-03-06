@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { discoverSources } from "@/lib/ai-source-discovery";
+import { validateRssFeed } from "@/lib/feeds";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
-import type { AiProvider } from "@/types";
+import type { AiProvider, LibrarySource } from "@/types";
 
 const DISCOVER_LIMIT = 5;
 const DISCOVER_WINDOW_MS = 60 * 1000;
@@ -78,12 +79,33 @@ export async function POST(request: Request) {
   }
 
   try {
-    const sources = await discoverSources({
+    const candidates = await discoverSources({
       query: query.trim(),
       provider: stored.provider as AiProvider,
       apiKey,
       model: stored.model,
     });
+
+    console.log(`[discover] AI suggested ${candidates.length} sources for "${query.trim()}":`,
+      candidates.map((s) => s.url));
+
+    // Validate each candidate has a working RSS feed (concurrently)
+    const validationResults = await Promise.allSettled(
+      candidates.map(async (source) => {
+        const result = await validateRssFeed(source.url);
+        if (!result.valid) {
+          console.warn(`[discover] Invalid RSS: ${source.url}`);
+        }
+        return { source, valid: result.valid };
+      })
+    );
+
+    const sources = validationResults
+      .filter((r): r is PromiseFulfilledResult<{ source: LibrarySource; valid: boolean }> =>
+        r.status === "fulfilled" && r.value.valid
+      )
+      .map((r) => r.value.source);
+
     return NextResponse.json({ sources });
   } catch (err) {
     console.error("[ai-source-discovery]", err);

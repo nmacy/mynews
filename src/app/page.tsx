@@ -40,6 +40,7 @@ function HomeContent() {
   const searchQuery = searchParams.get("q") || "";
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failedSources, setFailedSources] = useState<{ name: string; url: string }[]>([]);
 
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),
@@ -61,6 +62,7 @@ function HomeContent() {
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles as Article[]);
+        setFailedSources(data.failedSources ?? []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -103,6 +105,12 @@ function HomeContent() {
 
   return (
     <>
+      {failedSources.length > 0 && (
+        <div className="text-xs mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400">
+          Failed to fetch articles from: {failedSources.map((s) => s.name).join(", ")}.
+          {" "}The RSS feed may be invalid or unavailable.
+        </div>
+      )}
       {aiError && (
         <p className="text-xs mb-4 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">
           AI tagging failed: {aiError}

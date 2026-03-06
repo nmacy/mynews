@@ -1,5 +1,5 @@
 import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
-import type { Keyword } from "@/config/tags";
+import type { Keyword, TagDefinition } from "@/config/tags";
 
 interface CompiledTag {
   slug: string;
@@ -16,32 +16,44 @@ function buildPattern(kw: Keyword): RegExp {
   return new RegExp(`\\b${escaped}\\b`, term.length <= 2 ? "" : "i");
 }
 
-const compiledTags: CompiledTag[] = TAG_DEFINITIONS.flatMap((tag) =>
-  tag.keywords.map((kw) => ({
-    slug: tag.slug,
-    pattern: buildPattern(kw),
-  }))
-);
+function compileDefs(defs: TagDefinition[]): CompiledTag[] {
+  return defs.flatMap((tag) =>
+    tag.keywords.map((kw) => ({
+      slug: tag.slug,
+      pattern: buildPattern(kw),
+    }))
+  );
+}
 
-function addWithParents(matched: Set<string>, slug: string) {
+const staticCompiledTags: CompiledTag[] = compileDefs(TAG_DEFINITIONS);
+
+function addWithParents(matched: Set<string>, slug: string, tagMap: Map<string, TagDefinition>) {
   let current: string | undefined = slug;
   while (current && !matched.has(current)) {
     matched.add(current);
-    current = TAG_MAP.get(current)?.parent;
+    current = tagMap.get(current)?.parent;
   }
 }
 
-export function assignTags(article: {
-  title: string;
-  description: string;
-}): string[] {
+export function assignTags(
+  article: { title: string; description: string },
+  extraTags?: TagDefinition[],
+): string[] {
   const text = `${article.title} ${article.description}`;
   const matched = new Set<string>();
 
-  for (const { slug, pattern } of compiledTags) {
+  const compiled = extraTags && extraTags.length > 0
+    ? [...staticCompiledTags, ...compileDefs(extraTags)]
+    : staticCompiledTags;
+
+  const tagMap = extraTags && extraTags.length > 0
+    ? new Map([...TAG_MAP.entries(), ...extraTags.map((t) => [t.slug, t] as const)])
+    : TAG_MAP;
+
+  for (const { slug, pattern } of compiled) {
     if (matched.has(slug)) continue;
     if (pattern.test(text)) {
-      addWithParents(matched, slug);
+      addWithParents(matched, slug, tagMap);
     }
   }
 

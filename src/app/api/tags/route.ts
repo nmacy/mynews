@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getAllTagDefinitions } from "@/lib/custom-tags";
 import type { AiProvider } from "@/types";
 
 const VALID_PROVIDERS = new Set(["anthropic", "openai", "gemini", "openrouter"]);
@@ -112,8 +113,12 @@ export async function POST(request: Request) {
   }));
 
   try {
+    const allTagDefs = await getAllTagDefinitions();
+    const allTags = allTagDefs.map((t) => ({ slug: t.slug, label: t.label }));
+
     const tags = await tagArticlesWithAi({
       articles: sanitized,
+      allTags,
       provider: provider as AiProvider,
       apiKey,
       model,

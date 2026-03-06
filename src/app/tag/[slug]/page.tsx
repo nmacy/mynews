@@ -8,7 +8,7 @@ import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
-import { TAG_MAP } from "@/config/tags";
+import { useTagMap } from "@/components/TagProvider";
 import type { Article } from "@/types";
 
 function ArticleSkeleton() {
@@ -37,10 +37,11 @@ function ArticleSkeleton() {
 function TagContent() {
   const { slug } = useParams<{ slug: string }>();
   const { config } = useConfig();
+  const tagMap = useTagMap();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const tag = TAG_MAP.get(slug);
+  const tag = tagMap.get(slug);
 
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),

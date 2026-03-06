@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { TAG_DEFINITIONS } from "@/config/tags";
+import { useTagDefinitions } from "@/components/TagProvider";
 
 interface FilterBarProps {
   sources: { id: string; name: string }[];
@@ -32,6 +32,7 @@ export function FilterBar({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const TAG_DEFINITIONS = useTagDefinitions();
   const [open, setOpen] = useState(false);
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const tagDropdownRef = useRef<HTMLDivElement>(null);

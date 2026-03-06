@@ -24,11 +24,12 @@ import { useConfig } from "@/components/ConfigProvider";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
 import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
+import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
 import { DiscoverSourcesSection } from "@/components/settings/DiscoverSourcesSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
-import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
+import { useTagDefinitions, useTagMap } from "@/components/TagProvider";
 import { SOURCE_LIBRARY, SOURCE_CATEGORIES } from "@/config/source-library";
 import {
   loadCustomLibrarySources,
@@ -94,6 +95,8 @@ function SortableTag({
 
 function TagBarSection() {
   const { featuredTags, setFeaturedTags } = useConfig();
+  const TAG_MAP = useTagMap();
+  const TAG_DEFINITIONS = useTagDefinitions();
 
   const isCustomized =
     featuredTags.length !== DEFAULT_FEATURED_TAGS.length ||
@@ -155,6 +158,7 @@ function TagBarSection() {
             Selected
           </p>
           <DndContext
+            id="tag-bar-dnd"
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
@@ -741,12 +745,14 @@ function SourcesSection() {
 function RescanSection() {
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<{ completed: number; total: number; source: string } | null>(null);
+  const [aiProgress, setAiProgress] = useState<{ completed: number; total: number } | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
   const handleRescan = async () => {
     setScanning(true);
     setResult(null);
     setProgress(null);
+    setAiProgress(null);
     try {
       const res = await fetch("/api/feeds", { method: "POST" });
       if (!res.ok || !res.body) throw new Error("Rescan failed");
@@ -768,9 +774,18 @@ function RescanSection() {
           const event = JSON.parse(line);
           if (event.type === "progress") {
             setProgress({ completed: event.completed, total: event.total, source: event.source });
+          } else if (event.type === "ai-tagging") {
+            setProgress(null);
+            setAiProgress({ completed: 0, total: event.total });
+          } else if (event.type === "ai-progress") {
+            setAiProgress({ completed: event.completed, total: event.total });
           } else if (event.type === "done") {
-            setProgress({ completed: event.total, total: event.total, source: "" });
-            setResult(`Rescanned ${event.count} articles`);
+            setProgress(null);
+            setAiProgress(null);
+            // Clear client-side AI tag cache so pages use fresh server tags
+            try { localStorage.removeItem("mynews-ai-tags"); } catch {}
+            const aiMsg = event.aiTagged > 0 ? ` (${event.aiTagged} AI-tagged)` : "";
+            setResult(`Rescanned ${event.count} articles${aiMsg}`);
           }
         }
       }
@@ -782,6 +797,7 @@ function RescanSection() {
   };
 
   const pct = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
+  const aiPct = aiProgress ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0;
 
   return (
     <div
@@ -790,7 +806,7 @@ function RescanSection() {
     >
       <h2 className="text-lg font-bold mb-2">Rescan Articles</h2>
       <p className="text-sm mb-4" style={{ color: "var(--mn-muted)" }}>
-        Clear the article cache and re-fetch all feeds with fresh keyword tags.
+        Clear the article cache and re-fetch all feeds with fresh tags. If AI is enabled, articles will also be tagged using AI.
       </p>
 
       {scanning && progress && (
@@ -806,6 +822,24 @@ function RescanSection() {
             <div
               className="h-full rounded-full transition-all duration-300"
               style={{ width: `${pct}%`, backgroundColor: "var(--mn-accent)" }}
+            />
+          </div>
+        </div>
+      )}
+
+      {scanning && aiProgress && (
+        <div className="mb-4">
+          <div className="flex justify-between text-xs mb-1" style={{ color: "var(--mn-muted)" }}>
+            <span>AI tagging articles...</span>
+            <span>{aiProgress.completed}/{aiProgress.total}</span>
+          </div>
+          <div
+            className="h-2 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--mn-border)" }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${aiPct}%`, backgroundColor: "var(--mn-accent)" }}
             />
           </div>
         </div>
@@ -950,6 +984,7 @@ export default function SettingsPage() {
       <DiscoverSourcesSection />
       <TagBarSection />
       {isAdminUser && <AiTaggerSection />}
+      {isAdminUser && <CustomTagsSection />}
       {isAdminUser && <RescanSection />}
       {isAdminUser && <CacheSection />}
       {isAdminUser && <AdminUsersSection />}

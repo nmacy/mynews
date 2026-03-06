@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TAG_MAP } from "@/config/tags";
+import { useTagMap } from "@/components/TagProvider";
 
 export function TagBadge({ slug, aiTagged }: { slug: string; aiTagged?: boolean }) {
   const router = useRouter();
-  const tag = TAG_MAP.get(slug);
+  const tagMap = useTagMap();
+  const tag = tagMap.get(slug);
   if (!tag) return null;
 
   return (

@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { checkRateLimit } from "./rate-limit";
 
-/** Re-check role from DB at most every 5 minutes */
+/** Re-check role + username from DB at most every 5 minutes */
 const ROLE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const useSecureCookies = process.env.NEXTAUTH_URL?.startsWith("https://") ?? false;
@@ -29,25 +29,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "Email", type: "email" },
+        username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email as string | undefined;
+        const username = credentials?.username as string | undefined;
         const password = credentials?.password as string | undefined;
-        if (!email || !password) return null;
+        if (!username || !password) return null;
 
-        // Rate limit: 5 login attempts per minute per email
-        const rl = checkRateLimit(`login:${email}`, 5, 60_000);
+        // Rate limit: 5 login attempts per minute per username
+        const rl = checkRateLimit(`login:${username}`, 5, 60_000);
         if (!rl.allowed) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findUnique({ where: { username } });
         if (!user) return null;
 
         const valid = await bcrypt.compare(password, user.hashedPassword);
         if (!valid) return null;
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
+        return { id: user.id, email: user.email, name: user.name, role: user.role, username: user.username };
       },
     }),
   ],
@@ -55,17 +55,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.username = (user as Record<string, unknown>).username as string;
         token.role = (user as Record<string, unknown>).role as string;
         token.roleCheckedAt = Date.now();
       } else if (token.id) {
-        // Periodically re-validate role from DB
+        // Periodically re-validate role + username from DB
         const lastChecked = token.roleCheckedAt || 0;
         if (Date.now() - lastChecked > ROLE_REFRESH_INTERVAL_MS) {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { role: true },
+            select: { role: true, username: true },
           });
           token.role = dbUser?.role ?? "user";
+          token.username = dbUser?.username ?? (token.username as string);
           token.roleCheckedAt = Date.now();
         }
       }
@@ -74,6 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        session.user.username = (token.username as string) || "";
         session.user.role = (token.role as string) || "user";
       }
       return session;

@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 
 interface UserEntry {
   id: string;
-  email: string;
+  username: string;
+  email: string | null;
   name: string | null;
   role: string;
   createdAt: string;
@@ -60,7 +61,7 @@ export function AdminUsersSection() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm truncate">
-                    {user.email}
+                    {user.username}
                   </span>
                   {user.role === "admin" && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 flex-shrink-0">
@@ -68,9 +69,9 @@ export function AdminUsersSection() {
                     </span>
                   )}
                 </div>
-                {user.name && (
+                {(user.name || user.email) && (
                   <p className="text-xs mt-0.5" style={{ color: "var(--mn-muted2)" }}>
-                    {user.name}
+                    {user.name}{user.name && user.email ? " · " : ""}{user.email}
                   </p>
                 )}
               </div>

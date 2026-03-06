@@ -71,7 +71,7 @@ function UserMenu() {
     );
   }
 
-  const initial = (session.user.name?.[0] || session.user.email?.[0] || "?").toUpperCase();
+  const initial = (session.user.name?.[0] || session.user.username?.[0] || "?").toUpperCase();
 
   return (
     <div ref={menuRef} className="relative">
@@ -94,7 +94,7 @@ function UserMenu() {
         >
           <div className="px-4 py-2 border-b" style={{ borderColor: "var(--mn-border)" }}>
             <div className="flex items-center gap-1.5">
-              <p className="text-sm font-medium truncate">{session.user.name || session.user.email}</p>
+              <p className="text-sm font-medium truncate">{session.user.name || session.user.username}</p>
               {session.user.role === "admin" && (
                 <span
                   className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded"
@@ -106,7 +106,7 @@ function UserMenu() {
             </div>
             {session.user.name && (
               <p className="text-xs truncate" style={{ color: "var(--mn-muted)" }}>
-                {session.user.email}
+                {session.user.username}
               </p>
             )}
           </div>

@@ -831,9 +831,9 @@ function RescanSection() {
 
 // --- Delete Account Section ---
 
-function DeleteAccountSection({ userEmail }: { userEmail: string }) {
+function DeleteAccountSection({ username }: { username: string }) {
   const [showConfirm, setShowConfirm] = useState(false);
-  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmUsername, setConfirmUsername] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -875,13 +875,13 @@ function DeleteAccountSection({ userEmail }: { userEmail: string }) {
       ) : (
         <div className="space-y-3">
           <p className="text-sm" style={{ color: "var(--mn-muted)" }}>
-            Type <strong>{userEmail}</strong> to confirm:
+            Type <strong>{username}</strong> to confirm:
           </p>
           <input
-            type="email"
-            value={confirmEmail}
-            onChange={(e) => setConfirmEmail(e.target.value)}
-            placeholder={userEmail}
+            type="text"
+            value={confirmUsername}
+            onChange={(e) => setConfirmUsername(e.target.value)}
+            placeholder={username}
             className="w-full px-3 py-2 rounded-lg text-sm outline-none"
             style={{
               backgroundColor: "var(--mn-bg)",
@@ -892,7 +892,7 @@ function DeleteAccountSection({ userEmail }: { userEmail: string }) {
           <div className="flex gap-2">
             <button
               onClick={handleDelete}
-              disabled={confirmEmail !== userEmail || deleting}
+              disabled={confirmUsername !== username || deleting}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 disabled:opacity-40"
             >
               {deleting ? "Deleting..." : "Confirm Delete"}
@@ -900,7 +900,7 @@ function DeleteAccountSection({ userEmail }: { userEmail: string }) {
             <button
               onClick={() => {
                 setShowConfirm(false);
-                setConfirmEmail("");
+                setConfirmUsername("");
                 setError(null);
               }}
               className="px-4 py-2 rounded-lg text-sm font-medium"
@@ -988,8 +988,8 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {session?.user?.email && (
-        <DeleteAccountSection userEmail={session.user.email} />
+      {session?.user?.username && (
+        <DeleteAccountSection username={session.user.username} />
       )}
     </div>
   );

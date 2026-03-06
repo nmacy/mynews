@@ -7,7 +7,7 @@ import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,14 +19,14 @@ export default function LoginPage() {
 
     const result = await signIn("credentials", {
       redirect: false,
-      email,
+      username,
       password,
     });
 
     setLoading(false);
 
     if (result?.error) {
-      setError("Invalid email or password");
+      setError("Invalid username or password");
     } else {
       router.push("/");
       router.refresh();
@@ -53,13 +53,14 @@ export default function LoginPage() {
               className="text-sm font-medium block mb-1"
               style={{ color: "var(--mn-muted)" }}
             >
-              Email
+              Username
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
+              autoComplete="username"
               className="w-full px-3 py-2 rounded-lg text-sm outline-none"
               style={{
                 backgroundColor: "var(--mn-bg)",

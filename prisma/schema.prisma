@@ -9,7 +9,8 @@ generator client {
 
 model User {
   id             String        @id @default(cuid())
-  email          String        @unique
+  username       String        @unique
+  email          String?
   hashedPassword String
   name           String?
   role           String        @default("user")

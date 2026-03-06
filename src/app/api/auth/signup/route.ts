@@ -7,6 +7,8 @@ import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 const SIGNUP_LIMIT = 3;
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 
+const USERNAME_RE = /^[a-zA-Z0-9_-]+$/;
+
 export async function POST(request: Request) {
   const ip = getClientIp(request);
   const rl = checkRateLimit(`signup:${ip}`, SIGNUP_LIMIT, SIGNUP_WINDOW_MS);
@@ -20,14 +22,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { email, password, name } = body as {
-    email?: string;
+  const { username, password, name, email } = body as {
+    username?: string;
     password?: string;
     name?: string;
+    email?: string;
   };
 
-  if (!email || typeof email !== "string" || !email.includes("@")) {
-    return NextResponse.json({ error: "Valid email is required" }, { status: 400 });
+  if (
+    !username ||
+    typeof username !== "string" ||
+    username.length < 3 ||
+    username.length > 30 ||
+    !USERNAME_RE.test(username)
+  ) {
+    return NextResponse.json(
+      { error: "Username must be 3–30 characters (letters, numbers, _ or -)" },
+      { status: 400 }
+    );
   }
 
   if (!password || typeof password !== "string" || password.length < 8 || password.length > 128) {
@@ -37,13 +49,17 @@ export async function POST(request: Request) {
     );
   }
 
+  if (email && (typeof email !== "string" || !email.includes("@"))) {
+    return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+  }
+
   const hashedPassword = await bcrypt.hash(password, 12);
 
   try {
     const user = await prisma.$transaction(async (tx) => {
-      const existing = await tx.user.findUnique({ where: { email } });
+      const existing = await tx.user.findUnique({ where: { username } });
       if (existing) {
-        throw new Error("EMAIL_TAKEN");
+        throw new Error("USERNAME_TAKEN");
       }
 
       const userCount = await tx.user.count();
@@ -51,19 +67,20 @@ export async function POST(request: Request) {
 
       return tx.user.create({
         data: {
-          email,
+          username,
           hashedPassword,
           name: name || null,
+          email: email || null,
           role,
           settings: { create: {} },
         },
       });
     });
 
-    return NextResponse.json({ id: user.id, email: user.email }, { status: 201 });
+    return NextResponse.json({ id: user.id, username: user.username }, { status: 201 });
   } catch (err) {
-    if (err instanceof Error && err.message === "EMAIL_TAKEN") {
-      return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+    if (err instanceof Error && err.message === "USERNAME_TAKEN") {
+      return NextResponse.json({ error: "Username already taken" }, { status: 409 });
     }
     throw err;
   }

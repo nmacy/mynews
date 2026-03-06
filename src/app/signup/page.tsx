@@ -7,9 +7,10 @@ import Link from "next/link";
 
 export default function SignupPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +23,12 @@ export default function SignupPage() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: name || undefined }),
+        body: JSON.stringify({
+          username,
+          password,
+          name: name || undefined,
+          email: email || undefined,
+        }),
       });
 
       const data = await res.json();
@@ -36,7 +42,7 @@ export default function SignupPage() {
       // Auto sign-in after signup
       const result = await signIn("credentials", {
         redirect: false,
-        email,
+        username,
         password,
       });
 
@@ -74,33 +80,17 @@ export default function SignupPage() {
               className="text-sm font-medium block mb-1"
               style={{ color: "var(--mn-muted)" }}
             >
-              Name <span style={{ color: "var(--mn-muted)" }}>(optional)</span>
+              Username
             </label>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "var(--mn-bg)",
-                border: "1px solid var(--mn-border)",
-                color: "var(--mn-fg)",
-              }}
-            />
-          </div>
-
-          <div>
-            <label
-              className="text-sm font-medium block mb-1"
-              style={{ color: "var(--mn-muted)" }}
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
+              minLength={3}
+              maxLength={30}
+              pattern="^[a-zA-Z0-9_-]+$"
+              autoComplete="username"
               className="w-full px-3 py-2 rounded-lg text-sm outline-none"
               style={{
                 backgroundColor: "var(--mn-bg)",
@@ -108,6 +98,9 @@ export default function SignupPage() {
                 color: "var(--mn-fg)",
               }}
             />
+            <p className="text-xs mt-1" style={{ color: "var(--mn-muted)" }}>
+              3–30 characters: letters, numbers, _ or -
+            </p>
           </div>
 
           <div>
@@ -133,6 +126,46 @@ export default function SignupPage() {
             <p className="text-xs mt-1" style={{ color: "var(--mn-muted)" }}>
               At least 8 characters
             </p>
+          </div>
+
+          <div>
+            <label
+              className="text-sm font-medium block mb-1"
+              style={{ color: "var(--mn-muted)" }}
+            >
+              Name <span style={{ color: "var(--mn-muted)" }}>(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                backgroundColor: "var(--mn-bg)",
+                border: "1px solid var(--mn-border)",
+                color: "var(--mn-fg)",
+              }}
+            />
+          </div>
+
+          <div>
+            <label
+              className="text-sm font-medium block mb-1"
+              style={{ color: "var(--mn-muted)" }}
+            >
+              Email <span style={{ color: "var(--mn-muted)" }}>(optional)</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                backgroundColor: "var(--mn-bg)",
+                border: "1px solid var(--mn-border)",
+                color: "var(--mn-fg)",
+              }}
+            />
           </div>
 
           {error && (

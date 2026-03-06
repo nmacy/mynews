@@ -24,6 +24,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
 import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
+import { DiscoverSourcesSection } from "@/components/settings/DiscoverSourcesSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
@@ -946,6 +947,7 @@ export default function SettingsPage() {
       <ThemeSection />
       <AccentSection />
       <SourcesSection />
+      <DiscoverSourcesSection />
       <TagBarSection />
       {isAdminUser && <AiTaggerSection />}
       {isAdminUser && <RescanSection />}

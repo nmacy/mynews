@@ -1,5 +1,5 @@
 import { TAG_DEFINITIONS } from "@/config/tags";
-import { AI_PROVIDER_MAP } from "@/config/ai-providers";
+import { callProvider } from "@/lib/ai-call";
 import type { AiProvider } from "@/types";
 
 const VALID_SLUGS = new Set(TAG_DEFINITIONS.map((t) => t.slug));
@@ -26,95 +26,6 @@ ${articleBlock}
 
 Respond with ONLY a JSON object mapping article IDs to arrays of tag slugs. No other text.
 Example: {"abc123": ["ai", "privacy"], "def456": ["economy"]}`;
-}
-
-async function callAnthropic(
-  prompt: string,
-  apiKey: string,
-  model: string
-): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  return data.content?.[0]?.text ?? "";
-}
-
-async function callOpenAiCompatible(
-  prompt: string,
-  apiKey: string,
-  model: string,
-  endpoint: string
-): Promise<string> {
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? "";
-}
-
-async function callGemini(
-  prompt: string,
-  apiKey: string,
-  model: string
-): Promise<string> {
-  // Validate model name to prevent URL path traversal
-  if (!/^[a-zA-Z0-9._\-/]+$/.test(model)) {
-    throw new Error("Invalid model name");
-  }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
 function extractTagMap(obj: Record<string, unknown>): Record<string, string[]> {
@@ -180,28 +91,7 @@ export async function tagArticlesWithAi(
   request: TagRequest
 ): Promise<Record<string, string[]>> {
   const { articles, provider, apiKey, model } = request;
-  const providerDef = AI_PROVIDER_MAP.get(provider);
-  if (!providerDef) throw new Error(`Unknown provider: ${provider}`);
-
   const prompt = buildPrompt(articles);
-  let raw: string;
-
-  switch (provider) {
-    case "anthropic":
-      raw = await callAnthropic(prompt, apiKey, model);
-      break;
-    case "openai":
-      raw = await callOpenAiCompatible(prompt, apiKey, model, providerDef.endpoint);
-      break;
-    case "openrouter":
-      raw = await callOpenAiCompatible(prompt, apiKey, model, providerDef.endpoint);
-      break;
-    case "gemini":
-      raw = await callGemini(prompt, apiKey, model);
-      break;
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
-  }
-
+  const raw = await callProvider(prompt, provider, apiKey, model);
   return parseAndValidate(raw);
 }

@@ -9,6 +9,7 @@ export function DefaultSourcesSection() {
   const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export function DefaultSourcesSection() {
 
   const handleToggle = (id: string) => {
     setSaved(false);
+    setSaveError(null);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -49,6 +51,7 @@ export function DefaultSourcesSection() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/admin/default-sources", {
         method: "PUT",
@@ -58,9 +61,12 @@ export function DefaultSourcesSection() {
       if (res.ok) {
         setInitial(new Set(selected));
         setSaved(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSaveError(data.error || `Save failed (${res.status})`);
       }
     } catch {
-      // silent
+      setSaveError("Network error");
     }
     setSaving(false);
   };
@@ -192,6 +198,11 @@ export function DefaultSourcesSection() {
         {saved && (
           <span className="text-xs font-medium" style={{ color: "#34C759" }}>
             Saved
+          </span>
+        )}
+        {saveError && (
+          <span className="text-xs font-medium" style={{ color: "#EF4444" }}>
+            {saveError}
           </span>
         )}
       </div>

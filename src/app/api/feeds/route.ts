@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
   } else if (sourceIdsParam) {
     // Filter default sources by ID
     const ids = new Set(sourceIdsParam.split(",").map((s) => s.trim()));
-    const filtered = getSources().filter((s) => ids.has(s.id));
+    const allSources = await getSources();
+    const filtered = allSources.filter((s) => ids.has(s.id));
     cacheKey = `articles:${filtered.map((s) => s.id).sort().join(",")}`;
     articles = await getArticlesForSources(filtered);
   } else {
@@ -60,7 +61,7 @@ export async function POST() {
   }
 
   clearCache();
-  const sources = getSources();
+  const sources = await getSources();
   const total = sources.length;
 
   const stream = new ReadableStream({

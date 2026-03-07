@@ -235,7 +235,7 @@ function scrapeLinks(html: string, baseUrl: string): ScrapedLink[] {
   return results;
 }
 
-async function fetchHtml(url: string, timeoutMs = FETCH_TIMEOUT): Promise<string> {
+export async function fetchHtml(url: string, timeoutMs = FETCH_TIMEOUT): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 

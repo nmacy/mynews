@@ -1,24 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useConfig } from "@/components/ConfigProvider";
 import type { LibrarySource } from "@/types";
 
 export function DiscoverSourcesSection() {
   const { allSources, addSource } = useConfig();
-  const [aiEnabled, setAiEnabled] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<LibrarySource[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/ai-status")
-      .then((res) => res.json())
-      .then((data) => setAiEnabled(data.enabled === true))
-      .catch(() => setAiEnabled(false));
-  }, []);
 
   const activeSourceUrls = useMemo(
     () => new Set(allSources.map((s) => s.url)),
@@ -28,8 +20,6 @@ export function DiscoverSourcesSection() {
     () => new Set(allSources.map((s) => s.id)),
     [allSources]
   );
-
-  if (!aiEnabled) return null;
 
   const handleDiscover = async () => {
     const trimmed = query.trim();
@@ -92,7 +82,7 @@ export function DiscoverSourcesSection() {
     >
       <h2 className="text-lg font-bold mb-2">Discover Sources</h2>
       <p className="text-sm mb-4" style={{ color: "var(--mn-muted)" }}>
-        Search for news sources by topic using AI.
+        Search by name or topic
       </p>
 
       <div className="flex gap-2 mb-4">
@@ -142,7 +132,7 @@ export function DiscoverSourcesSection() {
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium truncate">{source.name}</span>
+                  <span className="font-medium">{source.name}</span>
                   {added && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"

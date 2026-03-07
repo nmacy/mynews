@@ -73,6 +73,14 @@ body {
   color: var(--mn-link);
 }
 
+/* Strip card wrappers from admin sub-sections when nested */
+.admin-settings-inner > .rounded-2xl {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
 /* Hide scrollbar on category tabs */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

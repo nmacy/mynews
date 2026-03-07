@@ -1,5 +1,11 @@
 import { callProvider } from "@/lib/ai-call";
-import type { AiProvider, LibrarySource } from "@/types";
+import type { AiProvider } from "@/types";
+
+export interface AiSourceSuggestion {
+  name: string;
+  domain: string;
+  paywalled: boolean;
+}
 
 interface DiscoverRequest {
   query: string;
@@ -8,30 +14,30 @@ interface DiscoverRequest {
   model: string;
 }
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 function buildPrompt(query: string): string {
-  return `You are a news source discovery assistant. The user is looking for news sources about: "${query}"
+  return `You are a news source discovery assistant. The user is searching for: "${query}"
 
-Return a JSON array of 5-10 well-known, real news sources that cover this topic. Each entry must have:
-- "name": The publication name (e.g. "TechCrunch")
-- "url": A valid RSS feed URL or a news/blog listing page URL for that source
-- "paywalled": boolean, true if the source requires a subscription
+Consider BOTH interpretations of this query:
+1. It could be a publication NAME (e.g. "atlantic" → The Atlantic magazine)
+2. It could be a TOPIC (e.g. "atlantic" → sources covering Atlantic Ocean, Atlantic region)
 
-Prefer RSS feed URLs when available. When a source does not have an RSS feed, you may provide the URL of their news or blog listing page instead (e.g. a page that lists recent articles with links).
+Prioritize the name interpretation if there is a well-known publication matching the query.
 
-Only include real, well-known publications. Do not invent sources or URLs.
+Return a JSON array of 5-10 well-known, real news publications. Each entry must have:
+- "name": The full publication name (e.g. "The Atlantic")
+- "domain": The publication's main website domain (e.g. "theatlantic.com")
+- "paywalled": boolean, true if the source requires a paid subscription
+
+IMPORTANT: Only provide the domain name, NOT full URLs. I will discover the RSS feeds myself.
+Only include real, well-known publications. Do not invent publications.
 
 Respond with ONLY a JSON array. No other text.
-Example: [{"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "paywalled": false}, {"name": "Anthropic News", "url": "https://www.anthropic.com/news/", "paywalled": false}]`;
+Example: [{"name": "The Atlantic", "domain": "theatlantic.com", "paywalled": true}, {"name": "TechCrunch", "domain": "techcrunch.com", "paywalled": false}]`;
 }
 
-function parseResponse(raw: string, query: string): LibrarySource[] {
+function parseResponse(raw: string): AiSourceSuggestion[] {
   let jsonStr = raw.trim();
 
   // Extract JSON from potential markdown code blocks
@@ -44,7 +50,6 @@ function parseResponse(raw: string, query: string): LibrarySource[] {
   try {
     parsed = JSON.parse(jsonStr);
   } catch {
-    // Try to find JSON array in the response
     const arrMatch = jsonStr.match(/\[[\s\S]*\]/);
     if (!arrMatch) return [];
     try {
@@ -55,7 +60,6 @@ function parseResponse(raw: string, query: string): LibrarySource[] {
   }
 
   if (!Array.isArray(parsed)) {
-    // AI may wrap in an object like { "sources": [...] }
     if (typeof parsed === "object" && parsed !== null) {
       const values = Object.values(parsed as Record<string, unknown>);
       const arr = values.find((v) => Array.isArray(v));
@@ -69,48 +73,39 @@ function parseResponse(raw: string, query: string): LibrarySource[] {
     }
   }
 
-  const category =
-    query.trim().charAt(0).toUpperCase() + query.trim().slice(1);
-
-  const sources: LibrarySource[] = [];
-  const seenUrls = new Set<string>();
+  const suggestions: AiSourceSuggestion[] = [];
+  const seenDomains = new Set<string>();
 
   for (const entry of parsed as unknown[]) {
     if (typeof entry !== "object" || entry === null) continue;
     const e = entry as Record<string, unknown>;
 
     const name = typeof e.name === "string" ? e.name.trim() : "";
-    const url = typeof e.url === "string" ? e.url.trim() : "";
-    if (!name || !url) continue;
+    let domain = typeof e.domain === "string" ? e.domain.trim().toLowerCase() : "";
+    if (!name || !domain) continue;
 
-    // Basic URL validation
-    try {
-      new URL(url);
-    } catch {
-      continue;
-    }
+    // Strip protocol if AI included it
+    domain = domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
-    if (seenUrls.has(url)) continue;
-    seenUrls.add(url);
+    if (!DOMAIN_REGEX.test(domain)) continue;
+    if (seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
 
-    sources.push({
-      id: slugify(name) || `source-${sources.length}`,
+    suggestions.push({
       name,
-      url,
-      priority: 2,
+      domain,
       paywalled: e.paywalled === true,
-      category,
     });
   }
 
-  return sources;
+  return suggestions;
 }
 
 export async function discoverSources(
-  request: DiscoverRequest
-): Promise<LibrarySource[]> {
+  request: DiscoverRequest,
+): Promise<AiSourceSuggestion[]> {
   const { query, provider, apiKey, model } = request;
   const prompt = buildPrompt(query);
   const raw = await callProvider(prompt, provider, apiKey, model);
-  return parseResponse(raw, query);
+  return parseResponse(raw);
 }

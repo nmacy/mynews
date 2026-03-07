@@ -15,9 +15,20 @@ function ArticleSkeleton() {
   return (
     <div className="animate-pulse">
       <div
-        className="w-full aspect-[2/1] sm:aspect-[3/1] rounded-2xl mb-8"
+        className="hidden sm:block w-full aspect-[3/1] rounded-2xl mb-8"
         style={{ backgroundColor: "var(--mn-border)" }}
       />
+      <div
+        className="sm:hidden rounded-2xl mb-6 overflow-hidden"
+        style={{ backgroundColor: "var(--mn-card)" }}
+      >
+        <div className="aspect-video" style={{ backgroundColor: "var(--mn-border)" }} />
+        <div className="p-4 space-y-3">
+          <div className="h-4 rounded" style={{ backgroundColor: "var(--mn-border)", width: "75%" }} />
+          <div className="h-4 rounded" style={{ backgroundColor: "var(--mn-border)", width: "100%" }} />
+          <div className="h-3 rounded" style={{ backgroundColor: "var(--mn-border)", width: "50%" }} />
+        </div>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--mn-card)" }}>

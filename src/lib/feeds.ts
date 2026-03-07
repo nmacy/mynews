@@ -8,6 +8,7 @@ import { persistArticles, loadPersistedArticles, pruneExpiredArticles } from "./
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
+import { prisma } from "./prisma";
 import type { Article, Source, SourcesConfig } from "@/types";
 
 const config = sourcesConfig as SourcesConfig;
@@ -138,10 +139,11 @@ export async function getAllArticles(): Promise<Article[]> {
   const cached = getCached<Article[]>(ALL_ARTICLES_KEY);
   if (cached) return cached;
 
+  const sources = await getSources();
   const customTags = await getCustomTags();
 
   const results = await Promise.allSettled(
-    config.sources.map((source) => fetchSource(source, customTags))
+    sources.map((source) => fetchSource(source, customTags))
   );
 
   const articles: Article[] = [];
@@ -152,7 +154,7 @@ export async function getAllArticles(): Promise<Article[]> {
     if (result.status === "fulfilled") {
       articles.push(...result.value);
     } else {
-      const source = config.sources[i];
+      const source = sources[i];
       failed.push({
         name: source.name,
         url: source.url,
@@ -176,7 +178,7 @@ export async function getAllArticles(): Promise<Article[]> {
   // Persist fresh articles to DB, then load full 7-day set
   let final = unique;
   try {
-    const sourceIds = config.sources.map((s) => s.id);
+    const sourceIds = sources.map((s) => s.id);
     await persistArticles(unique);
     final = await loadPersistedArticles(sourceIds);
     pruneExpiredArticles().catch(() => {});
@@ -200,7 +202,18 @@ export async function getArticleById(id: string): Promise<Article | null> {
   return all.find((a) => a.id === id) ?? null;
 }
 
-export function getSources() {
+export async function getSources(): Promise<Source[]> {
+  try {
+    const row = await prisma.serverDefaultSources.findUnique({
+      where: { key: "default" },
+    });
+    if (row) {
+      const sources = JSON.parse(row.sources) as Source[];
+      if (sources.length > 0) return sources;
+    }
+  } catch {
+    // fall through to static defaults
+  }
   return config.sources;
 }
 

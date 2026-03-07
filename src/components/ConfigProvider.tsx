@@ -11,6 +11,17 @@ import { ACCENT_PALETTES } from "@/config/accents";
 const STORAGE_KEY = "mynews-config";
 const DISABLED_KEY = "mynews-disabled-sources";
 
+async function fetchDefaultSources(): Promise<Source[]> {
+  try {
+    const res = await fetch("/api/default-sources");
+    if (!res.ok) return (defaultConfig as UserConfig).sources;
+    const data = await res.json();
+    return data.sources ?? (defaultConfig as UserConfig).sources;
+  } catch {
+    return (defaultConfig as UserConfig).sources;
+  }
+}
+
 interface ConfigContextValue {
   /** Config with disabled sources filtered out — use for fetching articles */
   config: UserConfig;
@@ -124,6 +135,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
   const [serverLoaded, setServerLoaded] = useState(false);
+  const [adminDefaults, setAdminDefaults] = useState<Source[] | null>(null);
+  const adminDefaultsRef = useRef<Source[] | null>(null);
 
   // Refs that always reflect the latest values — eliminates stale closures
   const configRef = useRef(config);
@@ -139,11 +152,21 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   // Track whether user has made changes (prevents server fetch from overwriting)
   const dirtyRef = useRef(false);
 
-  // Load from localStorage on mount (always, for instant hydration)
+  // Load from localStorage on mount, then fetch admin defaults
   useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     setConfig(loadConfig());
     setDisabledSources(loadDisabled());
     setMounted(true);
+
+    // Fetch admin defaults; if user has no localStorage config, apply them
+    fetchDefaultSources().then((sources) => {
+      setAdminDefaults(sources);
+      adminDefaultsRef.current = sources;
+      if (!stored) {
+        setConfig({ sources });
+      }
+    });
   }, []);
 
   // When authenticated, load from server (overrides localStorage)
@@ -158,6 +181,9 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
           if (hasSources) {
             setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
             setDisabledSources(new Set(data.disabledSourceIds));
+          } else if (adminDefaultsRef.current) {
+            // New user with no saved sources → apply admin defaults
+            setConfig({ sources: adminDefaultsRef.current });
           }
         }
         if (data.theme && VALID_THEME_PREFS.has(data.theme)) {
@@ -302,7 +328,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   const resetToDefaults = useCallback(() => {
     dirtyRef.current = true;
-    const fresh = defaultConfig as UserConfig;
+    const sources = adminDefaults ?? (defaultConfig as UserConfig).sources;
+    const fresh: UserConfig = { sources };
     const empty = new Set<string>();
     setConfig(fresh);
     setDisabledSources(empty);
@@ -317,7 +344,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         disabledSourceIds: [],
       });
     }
-  }, [debouncedServerSave]);
+  }, [debouncedServerSave, adminDefaults]);
 
   const effectiveConfig: UserConfig = mounted
     ? {

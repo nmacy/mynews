@@ -24,6 +24,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
 import { AiSettingsSection } from "@/components/settings/AiTaggerSection";
+import { DefaultSourcesSection } from "@/components/settings/DefaultSourcesSection";
 import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
@@ -751,21 +752,11 @@ function DiscoverSourcesInline({
   activeSourceUrls: Set<string>;
   onAdd: (source: LibrarySource) => void;
 }) {
-  const [aiEnabled, setAiEnabled] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<LibrarySource[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/ai-status")
-      .then((res) => res.json())
-      .then((data) => setAiEnabled(data.enabled === true))
-      .catch(() => setAiEnabled(false));
-  }, []);
-
-  if (!aiEnabled) return null;
 
   const handleDiscover = async () => {
     const trimmed = query.trim();
@@ -799,10 +790,10 @@ function DiscoverSourcesInline({
         className="text-xs font-semibold uppercase tracking-wide mb-2"
         style={{ color: "var(--mn-muted)" }}
       >
-        Discover with AI
+        Discover Sources
       </h4>
       <p className="text-sm mb-2" style={{ color: "var(--mn-muted)" }}>
-        Search for news sources by topic using AI.
+        Search by name or topic
       </p>
       <div className="flex gap-2 mb-3">
         <input
@@ -847,7 +838,7 @@ function DiscoverSourcesInline({
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium truncate">{source.name}</span>
+                  <span className="font-medium">{source.name}</span>
                   {added && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
@@ -1360,6 +1351,47 @@ function InterfaceCustomizationsSection() {
   );
 }
 
+// --- Admin Settings (collapsible) ---
+
+function AdminSettingsGroup() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <h2 className="text-lg font-bold">Admin Settings</h2>
+        <span
+          className="text-sm transition-transform duration-200"
+          style={{ color: "var(--mn-muted)", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          &#9660;
+        </span>
+      </button>
+      {expanded && (
+        <div className="admin-settings-inner space-y-6 mt-6">
+          <DefaultSourcesSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <AiSettingsSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <CustomTagsSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <RescanSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <CacheSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <AdminUsersSection />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Settings Page ---
 
 export default function SettingsPage() {
@@ -1390,11 +1422,7 @@ export default function SettingsPage() {
 
       <InterfaceCustomizationsSection />
       <SourcesSection />
-      {isAdminUser && <AiSettingsSection />}
-      {isAdminUser && <CustomTagsSection />}
-      {isAdminUser && <RescanSection />}
-      {isAdminUser && <CacheSection />}
-      {isAdminUser && <AdminUsersSection />}
+      {isAdminUser && <AdminSettingsGroup />}
 
       {/* Reset to Defaults */}
       <div

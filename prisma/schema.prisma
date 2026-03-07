@@ -84,6 +84,13 @@ model CachedExtraction {
   expiresAt DateTime
 }
 
+model ServerDefaultSources {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  sources   String   @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
 model Article {
   id          String   @id
   url         String   @unique

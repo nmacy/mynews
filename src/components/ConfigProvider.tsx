@@ -125,9 +125,19 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [serverLoaded, setServerLoaded] = useState(false);
 
+  // Refs that always reflect the latest values — eliminates stale closures
+  const configRef = useRef(config);
+  configRef.current = config;
+  const disabledRef = useRef(disabledSources);
+  disabledRef.current = disabledSources;
+  const authRef = useRef(isAuthenticated);
+  authRef.current = isAuthenticated;
+
   // Debounce timer for server saves
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<Record<string, unknown>>({});
+  // Track whether user has made changes (prevents server fetch from overwriting)
+  const dirtyRef = useRef(false);
 
   // Load from localStorage on mount (always, for instant hydration)
   useEffect(() => {
@@ -142,10 +152,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
     fetchServerSettings().then((data) => {
       if (data) {
-        const hasSources = data.sources && data.sources.length > 0;
-        if (hasSources) {
-          setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
-          setDisabledSources(new Set(data.disabledSourceIds));
+        // Don't overwrite if the user changed something while session was loading
+        if (!dirtyRef.current) {
+          const hasSources = data.sources && data.sources.length > 0;
+          if (hasSources) {
+            setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
+            setDisabledSources(new Set(data.disabledSourceIds));
+          }
         }
         if (data.theme && VALID_THEME_PREFS.has(data.theme)) {
           setTheme(data.theme as ThemePreference);
@@ -153,8 +166,6 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         if (data.accent && VALID_ACCENT_IDS.has(data.accent)) {
           setAccent(data.accent as AccentId);
         }
-        // If server settings are empty, keep localStorage values
-        // (ImportSettingsPrompt will handle migration)
       }
       setServerLoaded(true);
     });
@@ -164,6 +175,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === "unauthenticated") {
       setServerLoaded(false);
+      dirtyRef.current = false;
       // Reload from localStorage when signing out
       setConfig(loadConfig());
       setDisabledSources(loadDisabled());
@@ -185,122 +197,127 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   const persist = useCallback(
     (next: UserConfig, disabled?: Set<string>) => {
+      dirtyRef.current = true;
       setConfig(next);
-      const nextDisabled = disabled ?? disabledSources;
+      const nextDisabled = disabled ?? disabledRef.current;
       if (disabled !== undefined) setDisabledSources(disabled);
 
-      if (isAuthenticated) {
+      // Always save to localStorage as backup
+      saveConfigLocal(next);
+      if (disabled !== undefined) saveDisabledLocal(disabled);
+
+      if (authRef.current) {
         debouncedServerSave({
           sources: next.sources,
           featuredTags: next.featuredTags ?? [],
           sourceBarOrder: next.sourceBarOrder ?? [],
           disabledSourceIds: [...nextDisabled],
         });
-      } else {
-        saveConfigLocal(next);
-        if (disabled !== undefined) saveDisabledLocal(disabled);
       }
     },
-    [isAuthenticated, disabledSources, debouncedServerSave]
+    [debouncedServerSave]
   );
 
   const addSource = useCallback(
     (source: Source) => {
-      persist({ ...config, sources: [...config.sources, source] });
+      const cur = configRef.current;
+      persist({ ...cur, sources: [...cur.sources, source] });
     },
-    [config, persist]
+    [persist]
   );
 
   const removeSource = useCallback(
     (id: string) => {
-      const nextDisabled = new Set(disabledSources);
+      const cur = configRef.current;
+      const nextDisabled = new Set(disabledRef.current);
       nextDisabled.delete(id);
       persist(
-        { ...config, sources: config.sources.filter((s) => s.id !== id) },
+        { ...cur, sources: cur.sources.filter((s) => s.id !== id) },
         nextDisabled
       );
     },
-    [config, disabledSources, persist]
+    [persist]
   );
 
   const toggleSource = useCallback(
     (id: string) => {
-      const next = new Set(disabledSources);
+      dirtyRef.current = true;
+      const next = new Set(disabledRef.current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       setDisabledSources(next);
 
-      if (isAuthenticated) {
+      saveDisabledLocal(next);
+      if (authRef.current) {
         debouncedServerSave({ disabledSourceIds: [...next] });
-      } else {
-        saveDisabledLocal(next);
       }
     },
-    [disabledSources, isAuthenticated, debouncedServerSave]
+    [debouncedServerSave]
   );
 
   const togglePaywall = useCallback(
     (id: string) => {
+      const cur = configRef.current;
       persist({
-        ...config,
-        sources: config.sources.map((s) =>
+        ...cur,
+        sources: cur.sources.map((s) =>
           s.id === id ? { ...s, paywalled: !s.paywalled } : s
         ),
       });
     },
-    [config, persist]
+    [persist]
   );
 
   const setFeaturedTags = useCallback(
     (slugs: string[]) => {
-      persist({ ...config, featuredTags: slugs });
+      persist({ ...configRef.current, featuredTags: slugs });
     },
-    [config, persist]
+    [persist]
   );
 
   const setSourceBarOrder = useCallback(
     (names: string[]) => {
-      persist({ ...config, sourceBarOrder: names });
+      persist({ ...configRef.current, sourceBarOrder: names });
     },
-    [config, persist]
+    [persist]
   );
 
   const saveTheme = useCallback(
     (preference: ThemePreference) => {
-      if (isAuthenticated) {
+      if (authRef.current) {
         debouncedServerSave({ theme: preference });
       }
     },
-    [isAuthenticated, debouncedServerSave]
+    [debouncedServerSave]
   );
 
   const saveAccent = useCallback(
     (accent: AccentId) => {
-      if (isAuthenticated) {
+      if (authRef.current) {
         debouncedServerSave({ accent });
       }
     },
-    [isAuthenticated, debouncedServerSave]
+    [debouncedServerSave]
   );
 
   const resetToDefaults = useCallback(() => {
+    dirtyRef.current = true;
     const fresh = defaultConfig as UserConfig;
     const empty = new Set<string>();
     setConfig(fresh);
     setDisabledSources(empty);
 
-    if (isAuthenticated) {
+    saveConfigLocal(fresh);
+    saveDisabledLocal(empty);
+    if (authRef.current) {
       debouncedServerSave({
         sources: fresh.sources,
         featuredTags: [],
         sourceBarOrder: [],
         disabledSourceIds: [],
       });
-    } else {
-      saveConfigLocal(fresh);
-      saveDisabledLocal(empty);
     }
-  }, [isAuthenticated, debouncedServerSave]);
+  }, [debouncedServerSave]);
 
   const effectiveConfig: UserConfig = mounted
     ? {

@@ -20,11 +20,14 @@ interface ConfigContextValue {
   disabledSourceIds: Set<string>;
   /** Resolved featured tags (user's list or defaults) */
   featuredTags: string[];
+  /** Ordered source group names for source bar */
+  sourceBarOrder: string[];
   addSource: (source: Source) => void;
   removeSource: (id: string) => void;
   toggleSource: (id: string) => void;
   togglePaywall: (id: string) => void;
   setFeaturedTags: (slugs: string[]) => void;
+  setSourceBarOrder: (names: string[]) => void;
   saveTheme: (preference: ThemePreference) => void;
   saveAccent: (accent: AccentId) => void;
   resetToDefaults: () => void;
@@ -83,6 +86,7 @@ function saveDisabledLocal(disabled: Set<string>) {
 async function fetchServerSettings(): Promise<{
   sources: Source[];
   featuredTags: string[];
+  sourceBarOrder: string[];
   disabledSourceIds: string[];
   theme?: string;
   accent?: string;
@@ -139,7 +143,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         const hasSources = data.sources && data.sources.length > 0;
         if (hasSources) {
-          setConfig({ sources: data.sources, featuredTags: data.featuredTags });
+          setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
           setDisabledSources(new Set(data.disabledSourceIds));
         }
         if (data.theme && VALID_THEME_PREFS.has(data.theme)) {
@@ -183,6 +187,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         debouncedServerSave({
           sources: next.sources,
           featuredTags: next.featuredTags ?? [],
+          sourceBarOrder: next.sourceBarOrder ?? [],
           disabledSourceIds: [...nextDisabled],
         });
       } else {
@@ -247,6 +252,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     [config, persist]
   );
 
+  const setSourceBarOrder = useCallback(
+    (names: string[]) => {
+      persist({ ...config, sourceBarOrder: names });
+    },
+    [config, persist]
+  );
+
   const saveTheme = useCallback(
     (preference: ThemePreference) => {
       if (isAuthenticated) {
@@ -275,6 +287,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       debouncedServerSave({
         sources: fresh.sources,
         featuredTags: [],
+        sourceBarOrder: [],
         disabledSourceIds: [],
       });
     } else {
@@ -287,6 +300,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     ? {
         sources: config.sources.filter((s) => !disabledSources.has(s.id)),
         featuredTags: config.featuredTags,
+        sourceBarOrder: config.sourceBarOrder,
       }
     : (defaultConfig as UserConfig);
 
@@ -297,11 +311,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         allSources: mounted ? config.sources : (defaultConfig as UserConfig).sources,
         disabledSourceIds: disabledSources,
         featuredTags: mounted ? (config.featuredTags ?? DEFAULT_FEATURED_TAGS) : DEFAULT_FEATURED_TAGS,
+        sourceBarOrder: mounted ? (config.sourceBarOrder ?? []) : [],
         addSource,
         removeSource,
         toggleSource,
         togglePaywall,
         setFeaturedTags,
+        setSourceBarOrder,
         saveTheme,
         saveAccent,
         resetToDefaults,

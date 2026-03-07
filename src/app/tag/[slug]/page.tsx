@@ -90,7 +90,7 @@ function TagContent() {
     [taggedArticles, slug]
   );
 
-  const { filtered, sources, activeFilters, hasActiveFilters } =
+  const { filtered, activeFilters, hasActiveFilters } =
     useArticleFilters(tagFiltered);
 
   if (!tag) {
@@ -119,7 +119,6 @@ function TagContent() {
         </span>
       </div>
       <FilterBar
-        sources={sources}
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
       />

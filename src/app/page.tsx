@@ -93,7 +93,7 @@ function HomeContent() {
     );
   }, [taggedArticles, searchQuery]);
 
-  const { filtered, sources, activeFilters, hasActiveFilters } =
+  const { filtered, activeFilters, hasActiveFilters } =
     useArticleFilters(searchFiltered);
 
   if (loading) return <ArticleSkeleton />;
@@ -131,7 +131,6 @@ function HomeContent() {
         </div>
       )}
       <FilterBar
-        sources={sources}
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
       />

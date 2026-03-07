@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { discoverSources } from "@/lib/ai-source-discovery";
-import { validateRssFeed } from "@/lib/feeds";
+import { detectSourceType } from "@/lib/web-scraper";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
@@ -89,22 +89,23 @@ export async function POST(request: Request) {
     console.log(`[discover] AI suggested ${candidates.length} sources for "${query.trim()}":`,
       candidates.map((s) => s.url));
 
-    // Validate each candidate has a working RSS feed (concurrently)
+    // Validate each candidate (try RSS first, fall back to web scraping)
     const validationResults = await Promise.allSettled(
       candidates.map(async (source) => {
-        const result = await validateRssFeed(source.url);
+        const result = await detectSourceType(source.url);
         if (!result.valid) {
-          console.warn(`[discover] Invalid RSS: ${source.url}`);
+          console.warn(`[discover] Invalid source: ${source.url}`);
         }
-        return { source, valid: result.valid };
+        return { source, ...result };
       })
     );
 
-    const sources = validationResults
-      .filter((r): r is PromiseFulfilledResult<{ source: LibrarySource; valid: boolean }> =>
-        r.status === "fulfilled" && r.value.valid
-      )
-      .map((r) => r.value.source);
+    const sources: LibrarySource[] = [];
+    for (const r of validationResults) {
+      if (r.status === "fulfilled" && r.value.valid) {
+        sources.push({ ...r.value.source, type: r.value.type });
+      }
+    }
 
     return NextResponse.json({ sources });
   } catch (err) {

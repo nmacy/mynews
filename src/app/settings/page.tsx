@@ -29,6 +29,7 @@ import { DiscoverSourcesSection } from "@/components/settings/DiscoverSourcesSec
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
+import { useSourceGroups } from "@/components/layout/SourceBar";
 import { useTagDefinitions, useTagMap } from "@/components/TagProvider";
 import { SOURCE_LIBRARY, SOURCE_CATEGORIES } from "@/config/source-library";
 import {
@@ -202,6 +203,160 @@ function TagBarSection() {
                 }}
               >
                 {tag.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- Source Bar Section ---
+
+function SortableSourceGroup({
+  name,
+  onRemove,
+}: {
+  name: string;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: name });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    backgroundColor: "var(--mn-accent)",
+    color: "white",
+    opacity: isDragging ? 0.5 : 1,
+    cursor: "grab",
+  };
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors touch-none select-none"
+      onClick={onRemove}
+      {...attributes}
+      {...listeners}
+    >
+      {name}
+    </button>
+  );
+}
+
+function SourceBarSection() {
+  const { sourceBarOrder, setSourceBarOrder } = useConfig();
+  const groups = useSourceGroups();
+
+  const allGroupNames = groups.map((g) => g.name);
+  // If no custom order, treat all as "available" (natural order)
+  const isCustomized = sourceBarOrder.length > 0;
+  const orderedSet = new Set(sourceBarOrder);
+  const unordered = allGroupNames.filter((n) => !orderedSet.has(n));
+
+  const removeGroup = (name: string) => {
+    setSourceBarOrder(sourceBarOrder.filter((n) => n !== name));
+  };
+
+  const addGroup = (name: string) => {
+    setSourceBarOrder([...sourceBarOrder, name]);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = sourceBarOrder.indexOf(active.id as string);
+      const newIndex = sourceBarOrder.indexOf(over.id as string);
+      setSourceBarOrder(arrayMove(sourceBarOrder, oldIndex, newIndex));
+    }
+  };
+
+  if (allGroupNames.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold">Source Bar</h2>
+        {isCustomized && (
+          <button
+            onClick={() => setSourceBarOrder([])}
+            className="text-sm font-medium"
+            style={{ color: "var(--mn-accent)" }}
+          >
+            Reset order
+          </button>
+        )}
+      </div>
+      <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
+        Drag to reorder. Click to remove. Sources with the same name are grouped into one pill.
+      </p>
+
+      {sourceBarOrder.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
+            Ordered
+          </p>
+          <DndContext
+            id="source-bar-dnd"
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToParentElement]}
+          >
+            <SortableContext items={sourceBarOrder} strategy={horizontalListSortingStrategy}>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {sourceBarOrder.map((name) => {
+                  // Only show if this group still exists
+                  if (!allGroupNames.includes(name)) return null;
+                  return (
+                    <SortableSourceGroup
+                      key={name}
+                      name={name}
+                      onRemove={() => removeGroup(name)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </>
+      )}
+
+      {unordered.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
+            {isCustomized ? "Remaining (appear after ordered)" : "All sources (click to pin order)"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {unordered.map((name) => (
+              <button
+                key={name}
+                onClick={() => addGroup(name)}
+                className="px-3 py-1.5 text-sm font-medium rounded-full transition-colors"
+                style={{
+                  backgroundColor: "transparent",
+                  color: "var(--mn-muted)",
+                  border: "1px solid var(--mn-border)",
+                }}
+              >
+                {name}
               </button>
             ))}
           </div>
@@ -492,26 +647,56 @@ function ManualSourceForm({
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [paywalled, setPaywalled] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmedName = name.trim();
     const trimmedUrl = url.trim();
     if (!trimmedName || !trimmedUrl) return;
 
-    const id = slugify(trimmedName) || generateSourceId(trimmedName);
-    const source: Source = {
-      id,
-      name: trimmedName,
-      url: trimmedUrl,
-      priority: 2,
-      paywalled,
-    };
-    const libSource: LibrarySource = { ...source, category: "Custom" };
+    setValidating(true);
+    setError(null);
 
-    onAdd(source, libSource);
-    setName("");
-    setUrl("");
-    setPaywalled(false);
+    try {
+      const res = await fetch("/api/validate-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmedUrl }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Validation failed");
+        return;
+      }
+
+      if (!data.valid) {
+        setError("URL is not a valid RSS feed or news page");
+        return;
+      }
+
+      const id = slugify(trimmedName) || generateSourceId(trimmedName);
+      const source: Source = {
+        id,
+        name: trimmedName,
+        url: trimmedUrl,
+        priority: 2,
+        paywalled,
+        type: data.type,
+      };
+      const libSource: LibrarySource = { ...source, category: "Custom" };
+
+      onAdd(source, libSource);
+      setName("");
+      setUrl("");
+      setPaywalled(false);
+    } catch {
+      setError("Network error during validation");
+    } finally {
+      setValidating(false);
+    }
   };
 
   return (
@@ -537,8 +722,8 @@ function ManualSourceForm({
       <input
         type="url"
         value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder="RSS feed URL"
+        onChange={(e) => { setUrl(e.target.value); setError(null); }}
+        placeholder="RSS feed or news page URL"
         className="w-full px-3 py-2 rounded-lg text-sm outline-none"
         style={{
           backgroundColor: "var(--mn-card)",
@@ -555,13 +740,16 @@ function ManualSourceForm({
         />
         Paywalled
       </label>
+      {error && (
+        <p className="text-sm text-red-500">{error}</p>
+      )}
       <button
         onClick={handleSubmit}
-        disabled={!name.trim() || !url.trim()}
+        disabled={!name.trim() || !url.trim() || validating}
         className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
         style={{ backgroundColor: "var(--mn-accent)" }}
       >
-        Add Source
+        {validating ? "Validating..." : "Add Source"}
       </button>
     </div>
   );
@@ -696,6 +884,7 @@ function SourcesSection() {
       url: source.url,
       priority: source.priority,
       paywalled: source.paywalled,
+      type: source.type,
     });
   };
 
@@ -983,6 +1172,7 @@ export default function SettingsPage() {
       <SourcesSection />
       <DiscoverSourcesSection />
       <TagBarSection />
+      <SourceBarSection />
       {isAdminUser && <AiTaggerSection />}
       {isAdminUser && <CustomTagsSection />}
       {isAdminUser && <RescanSection />}

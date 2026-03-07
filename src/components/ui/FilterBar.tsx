@@ -5,8 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTagDefinitions } from "@/components/TagProvider";
 
 interface FilterBarProps {
-  sources: { id: string; name: string }[];
-  activeFilters: { tags: string[]; source: string; date: string };
+  activeFilters: { tags: string[]; sources: string[]; date: string };
   hasActiveFilters: boolean;
 }
 
@@ -25,7 +24,6 @@ const selectStyle: React.CSSProperties = {
 };
 
 export function FilterBar({
-  sources,
   activeFilters,
   hasActiveFilters,
 }: FilterBarProps) {
@@ -87,6 +85,7 @@ export function FilterBar({
   const clearAll = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("tag");
+    params.delete("sources");
     params.delete("source");
     params.delete("date");
     const qs = params.toString();
@@ -94,7 +93,7 @@ export function FilterBar({
   }, [router, pathname, searchParams]);
 
   const filterCount = activeFilters.tags.length +
-    (activeFilters.source ? 1 : 0) +
+    activeFilters.sources.length +
     (activeFilters.date ? 1 : 0);
 
   const tagLabel =
@@ -200,23 +199,6 @@ export function FilterBar({
               </div>
             )}
           </div>
-
-          <label className="flex items-center gap-1.5">
-            Source:
-            <select
-              value={activeFilters.source}
-              onChange={(e) => updateParam("source", e.target.value)}
-              className="rounded-lg px-2 py-1.5 text-sm outline-none"
-              style={selectStyle}
-            >
-              <option value="">All sources</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
 
           <label className="flex items-center gap-1.5">
             Date:

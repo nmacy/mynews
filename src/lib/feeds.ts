@@ -6,6 +6,7 @@ import { assignTags } from "./tagger";
 import { getCustomTags } from "./custom-tags";
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
+import { fetchWebSource } from "./web-scraper";
 import type { Article, Source, SourcesConfig } from "@/types";
 
 const config = sourcesConfig as SourcesConfig;
@@ -63,6 +64,8 @@ export async function fetchSource(
   source: Source,
   extraTags?: TagDefinition[],
 ): Promise<Article[]> {
+  if (source.type === "web") return fetchWebSource(source, extraTags);
+
   try {
     const feed = await parser.parseURL(source.url);
     const articles: Article[] = [];

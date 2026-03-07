@@ -16,17 +16,19 @@ function slugify(name: string): string {
 }
 
 function buildPrompt(query: string): string {
-  return `You are a news source discovery assistant. The user is looking for RSS news sources about: "${query}"
+  return `You are a news source discovery assistant. The user is looking for news sources about: "${query}"
 
 Return a JSON array of 5-10 well-known, real news sources that cover this topic. Each entry must have:
 - "name": The publication name (e.g. "TechCrunch")
-- "url": A valid RSS feed URL for that source (must be a real, working RSS/Atom feed URL — not the website homepage)
+- "url": A valid RSS feed URL or a news/blog listing page URL for that source
 - "paywalled": boolean, true if the source requires a subscription
 
-Only include real, well-known publications with actual RSS feeds. Do not invent sources or URLs.
+Prefer RSS feed URLs when available. When a source does not have an RSS feed, you may provide the URL of their news or blog listing page instead (e.g. a page that lists recent articles with links).
+
+Only include real, well-known publications. Do not invent sources or URLs.
 
 Respond with ONLY a JSON array. No other text.
-Example: [{"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "paywalled": false}]`;
+Example: [{"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "paywalled": false}, {"name": "Anthropic News", "url": "https://www.anthropic.com/news/", "paywalled": false}]`;
 }
 
 function parseResponse(raw: string, query: string): LibrarySource[] {

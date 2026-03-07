@@ -31,6 +31,7 @@ export async function GET() {
       featuredTags: [],
       disabledSourceIds: [],
       customLibrary: [],
+      sourceBarOrder: [],
       theme: "system",
       accent: "blue",
     });
@@ -41,6 +42,7 @@ export async function GET() {
     featuredTags: safeJsonParse(settings.featuredTags, []),
     disabledSourceIds: safeJsonParse(settings.disabledSourceIds, []),
     customLibrary: safeJsonParse(settings.customLibrary, []),
+    sourceBarOrder: safeJsonParse(settings.sourceBarOrder, []),
     theme: settings.theme,
     accent: settings.accent ?? "blue",
   });
@@ -64,6 +66,7 @@ export async function PUT(request: Request) {
     featuredTags?: string[];
     disabledSourceIds?: string[];
     customLibrary?: unknown[];
+    sourceBarOrder?: string[];
     theme?: string;
     accent?: string;
   };
@@ -89,6 +92,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Invalid customLibrary" }, { status: 400 });
     }
   }
+  if (data.sourceBarOrder !== undefined) {
+    if (!Array.isArray(data.sourceBarOrder) || data.sourceBarOrder.length > MAX_SOURCES) {
+      return NextResponse.json({ error: "Invalid sourceBarOrder" }, { status: 400 });
+    }
+  }
   if (data.theme !== undefined && !VALID_THEMES.has(data.theme)) {
     return NextResponse.json({ error: "Invalid theme" }, { status: 400 });
   }
@@ -101,6 +109,7 @@ export async function PUT(request: Request) {
   if (data.featuredTags !== undefined) update.featuredTags = JSON.stringify(data.featuredTags);
   if (data.disabledSourceIds !== undefined) update.disabledSourceIds = JSON.stringify(data.disabledSourceIds);
   if (data.customLibrary !== undefined) update.customLibrary = JSON.stringify(data.customLibrary);
+  if (data.sourceBarOrder !== undefined) update.sourceBarOrder = JSON.stringify(data.sourceBarOrder);
   if (data.theme !== undefined) update.theme = data.theme;
   if (data.accent !== undefined) update.accent = data.accent;
 
@@ -115,6 +124,7 @@ export async function PUT(request: Request) {
     featuredTags: safeJsonParse(settings.featuredTags, []),
     disabledSourceIds: safeJsonParse(settings.disabledSourceIds, []),
     customLibrary: safeJsonParse(settings.customLibrary, []),
+    sourceBarOrder: safeJsonParse(settings.sourceBarOrder, []),
     theme: settings.theme,
     accent: settings.accent ?? "blue",
   });

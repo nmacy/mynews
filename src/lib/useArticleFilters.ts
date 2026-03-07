@@ -14,7 +14,8 @@ const DATE_RANGES: Record<string, number> = {
 export function useArticleFilters(articles: Article[]) {
   const searchParams = useSearchParams();
   const tagParam = searchParams.get("tag") || "";
-  const source = searchParams.get("source") || "";
+  const sourcesParam = searchParams.get("sources") || "";
+  const legacySource = searchParams.get("source") || "";
   const date = searchParams.get("date") || "";
 
   const tags = useMemo(
@@ -23,16 +24,11 @@ export function useArticleFilters(articles: Article[]) {
   );
 
   const sources = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const a of articles) {
-      if (a.source?.id && !map.has(a.source.id)) {
-        map.set(a.source.id, a.source.name);
-      }
-    }
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [articles]);
+    // Plural param takes priority; fall back to legacy singular param
+    if (sourcesParam) return sourcesParam.split(",").filter(Boolean);
+    if (legacySource) return [legacySource];
+    return [];
+  }, [sourcesParam, legacySource]);
 
   const filtered = useMemo(() => {
     let result = articles;
@@ -43,8 +39,9 @@ export function useArticleFilters(articles: Article[]) {
       );
     }
 
-    if (source) {
-      result = result.filter((a) => a.source?.id === source);
+    if (sources.length > 0) {
+      const sourceSet = new Set(sources);
+      result = result.filter((a) => a.source?.id && sourceSet.has(a.source.id));
     }
 
     if (date && DATE_RANGES[date]) {
@@ -55,10 +52,10 @@ export function useArticleFilters(articles: Article[]) {
     }
 
     return result;
-  }, [articles, tags, source, date]);
+  }, [articles, tags, sources, date]);
 
-  const activeFilters = { tags, source, date };
-  const hasActiveFilters = !!(tags.length > 0 || source || date);
+  const activeFilters = { tags, sources, date };
+  const hasActiveFilters = !!(tags.length > 0 || sources.length > 0 || date);
 
-  return { filtered, sources, activeFilters, hasActiveFilters };
+  return { filtered, activeFilters, hasActiveFilters };
 }

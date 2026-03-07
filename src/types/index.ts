@@ -1,9 +1,12 @@
+export type SourceType = "rss" | "web";
+
 export interface Source {
   id: string;
   name: string;
   url: string;
   priority: number;
   paywalled?: boolean;
+  type?: SourceType;
 }
 
 export interface LibrarySource extends Source {
@@ -17,6 +20,7 @@ export interface SourcesConfig {
 export interface UserConfig {
   sources: Source[];
   featuredTags?: string[];
+  sourceBarOrder?: string[];
 }
 
 export interface Article {

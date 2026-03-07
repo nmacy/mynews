@@ -43,6 +43,7 @@ model UserSettings {
   featuredTags      String   @default("[]")
   disabledSourceIds String   @default("[]")
   customLibrary     String   @default("[]")
+  sourceBarOrder    String   @default("[]")
   theme             String   @default("system")
   accent            String   @default("blue")
   updatedAt         DateTime @updatedAt

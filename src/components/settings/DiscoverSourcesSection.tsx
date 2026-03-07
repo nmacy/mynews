@@ -78,6 +78,7 @@ export function DiscoverSourcesSection() {
       url: source.url,
       priority: source.priority,
       paywalled: source.paywalled,
+      type: source.type,
     });
   };
 

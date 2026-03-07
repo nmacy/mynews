@@ -127,6 +127,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   // Debounce timer for server saves
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef<Record<string, unknown>>({});
 
   // Load from localStorage on mount (always, for instant hydration)
   useEffect(() => {
@@ -171,8 +172,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   const debouncedServerSave = useCallback(
     (data: Record<string, unknown>) => {
+      Object.assign(pendingSaveRef.current, data);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => saveServerSettings(data), 500);
+      saveTimerRef.current = setTimeout(() => {
+        const merged = { ...pendingSaveRef.current };
+        pendingSaveRef.current = {};
+        saveServerSettings(merged);
+      }, 500);
     },
     []
   );

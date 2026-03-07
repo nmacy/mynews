@@ -18,7 +18,7 @@ interface FormState {
   enabled: boolean;
 }
 
-export function AiTaggerSection() {
+export function AiSettingsSection() {
   const [keys, setKeys] = useState<ServerKeyInfo[]>([]);
   const [form, setForm] = useState<FormState>({
     provider: "anthropic",
@@ -162,10 +162,10 @@ export function AiTaggerSection() {
         border: "1px solid var(--mn-border)",
       }}
     >
-      <h2 className="text-lg font-bold mb-1">AI Tagging</h2>
+      <h2 className="text-lg font-bold mb-1">AI Settings</h2>
       <p className="text-xs mb-4" style={{ color: "var(--mn-muted)" }}>
-        Configure the server-wide AI API key used for article tagging. All users
-        benefit from this configuration.
+        Configure the server-wide AI API key. Used for article tagging, source
+        discovery, and tag suggestions.
       </p>
 
       <div className="space-y-4">

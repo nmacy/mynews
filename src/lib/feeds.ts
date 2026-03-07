@@ -4,6 +4,7 @@ import { generateArticleId, stripHtml, truncate } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
 import { getCustomTags } from "./custom-tags";
+import { persistArticles, loadPersistedArticles, pruneExpiredArticles } from "./article-db";
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
@@ -172,14 +173,26 @@ export async function getAllArticles(): Promise<Article[]> {
     return true;
   });
 
+  // Persist fresh articles to DB, then load full 7-day set
+  let final = unique;
+  try {
+    const sourceIds = config.sources.map((s) => s.id);
+    await persistArticles(unique);
+    final = await loadPersistedArticles(sourceIds);
+    pruneExpiredArticles().catch(() => {});
+  } catch (err) {
+    console.warn("[article-db] DB persist/load failed, using RSS-only results:", err);
+  }
+
   // Sort by date, most recent first
-  unique.sort((a, b) => {
+  final.sort((a, b) => {
     return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
   });
 
-  setCache(ALL_ARTICLES_KEY, unique);
-  fillOgImagesInBackground(unique, ALL_ARTICLES_KEY);
-  return unique;
+  setCache(ALL_ARTICLES_KEY, final);
+  fillOgImagesInBackground(final, ALL_ARTICLES_KEY);
+
+  return final;
 }
 
 export async function getArticleById(id: string): Promise<Article | null> {
@@ -235,12 +248,24 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
     return true;
   });
 
+  // Persist fresh articles to DB, then load full 7-day set
+  let final = unique;
+  try {
+    const sourceIds = sources.map((s) => s.id);
+    await persistArticles(unique);
+    final = await loadPersistedArticles(sourceIds);
+    pruneExpiredArticles().catch(() => {});
+  } catch (err) {
+    console.warn("[article-db] DB persist/load failed, using RSS-only results:", err);
+  }
+
   // Sort by date, most recent first
-  unique.sort(
+  final.sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
 
-  setCache(cacheKey, unique);
-  fillOgImagesInBackground(unique, cacheKey);
-  return unique;
+  setCache(cacheKey, final);
+  fillOgImagesInBackground(final, cacheKey);
+
+  return final;
 }

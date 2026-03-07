@@ -10,6 +10,7 @@ import { TagTabs } from "@/components/layout/TagTabs";
 import { SourceBar } from "@/components/layout/SourceBar";
 import { ImportSettingsPrompt } from "@/components/ImportSettingsPrompt";
 import { TagProvider } from "@/components/TagProvider";
+import { StickyBars } from "@/components/layout/StickyBars";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -58,8 +59,10 @@ export default function RootLayout({
             <ConfigProvider>
               <TagProvider>
                 <Header />
-                <TagTabs />
-                <Suspense><SourceBar /></Suspense>
+                <StickyBars>
+                  <TagTabs />
+                  <Suspense><SourceBar /></Suspense>
+                </StickyBars>
                 <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                   {children}
                 </main>

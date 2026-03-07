@@ -23,9 +23,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { useConfig } from "@/components/ConfigProvider";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
-import { AiTaggerSection } from "@/components/settings/AiTaggerSection";
+import { AiSettingsSection } from "@/components/settings/AiTaggerSection";
 import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
-import { DiscoverSourcesSection } from "@/components/settings/DiscoverSourcesSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
@@ -133,12 +132,9 @@ function TagBarSection() {
   };
 
   return (
-    <div
-      className="rounded-2xl p-4 sm:p-6"
-      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Tag Bar</h2>
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold">Tag Bar</h3>
         {isCustomized && (
           <button
             onClick={() => setFeaturedTags(DEFAULT_FEATURED_TAGS)}
@@ -288,12 +284,9 @@ function SourceBarSection() {
   if (allGroupNames.length === 0) return null;
 
   return (
-    <div
-      className="rounded-2xl p-4 sm:p-6"
-      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Source Bar</h2>
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold">Source Bar</h3>
         {isCustomized && (
           <button
             onClick={() => setSourceBarOrder([])}
@@ -384,11 +377,8 @@ function ThemeSection() {
   };
 
   return (
-    <div
-      className="rounded-2xl p-4 sm:p-6"
-      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
-    >
-      <h2 className="text-lg font-bold mb-4">Theme</h2>
+    <div>
+      <h3 className="text-sm font-semibold mb-3">Theme</h3>
       <div className="flex gap-2">
         {THEME_OPTIONS.map((opt) => (
           <button
@@ -425,11 +415,8 @@ function AccentSection() {
   };
 
   return (
-    <div
-      className="rounded-2xl p-4 sm:p-6"
-      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
-    >
-      <h2 className="text-lg font-bold mb-4">Accent Color</h2>
+    <div>
+      <h3 className="text-sm font-semibold mb-3">Accent Color</h3>
       <div className="flex flex-wrap gap-3">
         {ACCENT_PALETTES.map((palette) => {
           const color = theme === "dark" ? palette.dark.accent : palette.light.accent;
@@ -755,6 +742,140 @@ function ManualSourceForm({
   );
 }
 
+function DiscoverSourcesInline({
+  activeSourceIds,
+  activeSourceUrls,
+  onAdd,
+}: {
+  activeSourceIds: Set<string>;
+  activeSourceUrls: Set<string>;
+  onAdd: (source: LibrarySource) => void;
+}) {
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<LibrarySource[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/ai-status")
+      .then((res) => res.json())
+      .then((data) => setAiEnabled(data.enabled === true))
+      .catch(() => setAiEnabled(false));
+  }, []);
+
+  if (!aiEnabled) return null;
+
+  const handleDiscover = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    setError(null);
+    setResults([]);
+    setSearched(true);
+    try {
+      const res = await fetch("/api/discover-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Discovery failed"); return; }
+      setResults(data.sources ?? []);
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isAdded = (source: LibrarySource) =>
+    activeSourceIds.has(source.id) || activeSourceUrls.has(source.url);
+
+  return (
+    <div>
+      <h4
+        className="text-xs font-semibold uppercase tracking-wide mb-2"
+        style={{ color: "var(--mn-muted)" }}
+      >
+        Discover with AI
+      </h4>
+      <p className="text-sm mb-2" style={{ color: "var(--mn-muted)" }}>
+        Search for news sources by topic using AI.
+      </p>
+      <div className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !loading) handleDiscover(); }}
+          placeholder='e.g. "gaming news", "climate science"'
+          maxLength={100}
+          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+          style={{
+            backgroundColor: "var(--mn-card)",
+            border: "1px solid var(--mn-border)",
+            color: "var(--mn-fg)",
+          }}
+        />
+        <button
+          onClick={handleDiscover}
+          disabled={loading || !query.trim()}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
+          style={{ backgroundColor: "var(--mn-accent)" }}
+        >
+          {loading ? "Searching..." : "Discover"}
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
+      {results.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {results.map((source) => {
+            const added = isAdded(source);
+            return (
+              <button
+                key={source.id}
+                onClick={() => !added && onAdd(source)}
+                disabled={added}
+                className="text-left px-3 py-2 rounded-lg text-sm transition-colors"
+                style={{
+                  backgroundColor: added ? "var(--mn-bg)" : "var(--mn-card)",
+                  border: "1px solid var(--mn-border)",
+                  opacity: added ? 0.6 : 1,
+                  cursor: added ? "default" : "pointer",
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium truncate">{source.name}</span>
+                  {added && (
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{ backgroundColor: "var(--mn-border)", color: "var(--mn-muted2)" }}
+                    >
+                      Added
+                    </span>
+                  )}
+                  {!added && source.paywalled && (
+                    <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                      $
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {searched && !loading && results.length === 0 && !error && (
+        <p className="text-sm text-center py-3" style={{ color: "var(--mn-muted2)" }}>
+          No sources found. Try a different search term.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AddSourcePanel({
   activeSourceIds,
   activeSourceUrls,
@@ -852,6 +973,17 @@ function AddSourcePanel({
         className="border-t pt-4"
         style={{ borderColor: "var(--mn-border)" }}
       >
+        <DiscoverSourcesInline
+          activeSourceIds={activeSourceIds}
+          activeSourceUrls={activeSourceUrls}
+          onAdd={onAddLibrary}
+        />
+      </div>
+
+      <div
+        className="border-t pt-4"
+        style={{ borderColor: "var(--mn-border)" }}
+      >
         <ManualSourceForm onAdd={handleAddManual} />
       </div>
     </div>
@@ -868,6 +1000,9 @@ function SourcesSection() {
     togglePaywall,
   } = useConfig();
 
+  const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState("");
+
   const activeSourceIds = useMemo(
     () => new Set(allSources.map((s) => s.id)),
     [allSources]
@@ -876,6 +1011,14 @@ function SourcesSection() {
     () => new Set(allSources.map((s) => s.url)),
     [allSources]
   );
+
+  const filteredSources = useMemo(() => {
+    if (!search.trim()) return allSources;
+    const q = search.toLowerCase();
+    return allSources.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.url.toLowerCase().includes(q)
+    );
+  }, [allSources, search]);
 
   const handleAddLibrary = (source: LibrarySource) => {
     addSource({
@@ -898,33 +1041,74 @@ function SourcesSection() {
       className="rounded-2xl p-4 sm:p-6"
       style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
     >
-      <h2 className="text-lg font-bold mb-4">Sources</h2>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <h2 className="text-lg font-bold">
+          Sources
+          <span className="text-sm font-normal ml-2" style={{ color: "var(--mn-muted)" }}>
+            ({allSources.length})
+          </span>
+        </h2>
+        <span
+          className="text-sm transition-transform duration-200"
+          style={{ color: "var(--mn-muted)", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          &#9660;
+        </span>
+      </button>
 
-      <div className="space-y-2">
-        {allSources.map((source) => (
-          <SourceRow
-            key={source.id}
-            source={source}
-            disabled={disabledSourceIds.has(source.id)}
-            onToggle={() => toggleSource(source.id)}
-            onRemove={() => removeSource(source.id)}
-            onTogglePaywall={() => togglePaywall(source.id)}
+      {expanded && (
+        <>
+          {allSources.length > 0 && (
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search sources..."
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none mt-4"
+              style={{
+                backgroundColor: "var(--mn-bg)",
+                border: "1px solid var(--mn-border)",
+                color: "var(--mn-fg)",
+              }}
+            />
+          )}
+
+          <div className="space-y-2 mt-3">
+            {filteredSources.map((source) => (
+              <SourceRow
+                key={source.id}
+                source={source}
+                disabled={disabledSourceIds.has(source.id)}
+                onToggle={() => toggleSource(source.id)}
+                onRemove={() => removeSource(source.id)}
+                onTogglePaywall={() => togglePaywall(source.id)}
+              />
+            ))}
+          </div>
+
+          {allSources.length > 0 && filteredSources.length === 0 && (
+            <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
+              No sources match &ldquo;{search}&rdquo;
+            </p>
+          )}
+
+          {allSources.length === 0 && (
+            <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
+              No sources configured
+            </p>
+          )}
+
+          <AddSourcePanel
+            activeSourceIds={activeSourceIds}
+            activeSourceUrls={activeSourceUrls}
+            onAddLibrary={handleAddLibrary}
+            onAddManual={handleAddManual}
           />
-        ))}
-      </div>
-
-      {allSources.length === 0 && (
-        <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
-          No sources configured
-        </p>
+        </>
       )}
-
-      <AddSourcePanel
-        activeSourceIds={activeSourceIds}
-        activeSourceUrls={activeSourceUrls}
-        onAddLibrary={handleAddLibrary}
-        onAddManual={handleAddManual}
-      />
     </div>
   );
 }
@@ -1139,6 +1323,43 @@ function DeleteAccountSection({ username }: { username: string }) {
   );
 }
 
+// --- Interface Customizations Section ---
+
+function InterfaceCustomizationsSection() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-6"
+      style={{ backgroundColor: "var(--mn-card)", border: "1px solid var(--mn-border)" }}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <h2 className="text-lg font-bold">Interface Customizations</h2>
+        <span
+          className="text-sm transition-transform duration-200"
+          style={{ color: "var(--mn-muted)", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          &#9660;
+        </span>
+      </button>
+      {expanded && (
+        <div className="space-y-6 mt-6">
+          <ThemeSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <AccentSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <TagBarSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <SourceBarSection />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Settings Page ---
 
 export default function SettingsPage() {
@@ -1167,13 +1388,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <ThemeSection />
-      <AccentSection />
+      <InterfaceCustomizationsSection />
       <SourcesSection />
-      <DiscoverSourcesSection />
-      <TagBarSection />
-      <SourceBarSection />
-      {isAdminUser && <AiTaggerSection />}
+      {isAdminUser && <AiSettingsSection />}
       {isAdminUser && <CustomTagsSection />}
       {isAdminUser && <RescanSection />}
       {isAdminUser && <CacheSection />}

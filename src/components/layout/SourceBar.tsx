@@ -67,16 +67,14 @@ export function SourceBar() {
   };
 
   const toggleGroup = (group: SourceGroup) => {
-    const groupSet = new Set(group.ids);
-    const allActive = group.ids.every((id) => activeSet.has(id));
+    const allActive = group.ids.every((id) => activeSet.has(id)) && activeIds.length === group.ids.length;
 
     if (allActive) {
-      // Remove all IDs in this group
-      updateSources(activeIds.filter((id) => !groupSet.has(id)));
+      // Deselect back to "All"
+      updateSources([]);
     } else {
-      // Add all IDs in this group that aren't already active
-      const toAdd = group.ids.filter((id) => !activeSet.has(id));
-      updateSources([...activeIds, ...toAdd]);
+      // Select only this group
+      updateSources(group.ids);
     }
   };
 

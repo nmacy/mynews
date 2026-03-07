@@ -83,3 +83,27 @@ model CachedExtraction {
   createdAt DateTime @default(now())
   expiresAt DateTime
 }
+
+model Article {
+  id          String   @id
+  url         String   @unique
+  title       String
+  description String
+  content     String
+  imageUrl    String?
+  publishedAt DateTime
+  sourceId    String
+  sourceName  String
+  categories  String   @default("[]")
+  tags        String   @default("[]")
+  priority    Int      @default(2)
+  paywalled   Boolean  @default(false)
+  aiTagged    Boolean  @default(false)
+  firstSeen   DateTime @default(now())
+  lastSeen    DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([sourceId])
+  @@index([publishedAt])
+  @@index([expiresAt])
+}

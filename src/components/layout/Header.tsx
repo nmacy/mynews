@@ -25,6 +25,31 @@ function GearIcon() {
   );
 }
 
+function NewsLogo() {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ color: "var(--mn-accent)" }}
+    >
+      {/* Page */}
+      <rect x="3" y="2" width="18" height="20" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
+      {/* Headline bar */}
+      <rect x="6" y="5" width="12" height="2.5" rx="1" fill="currentColor" />
+      {/* Image thumbnail */}
+      <rect x="6" y="10" width="5" height="4" rx="1" fill="currentColor" opacity="0.4" />
+      {/* Text lines beside image */}
+      <line x1="13" y1="10.5" x2="18" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="13" y1="13.5" x2="17" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Body text line */}
+      <line x1="6" y1="17" x2="18" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="6" y1="19.5" x2="14" y2="19.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -143,10 +168,8 @@ export function Header() {
       style={{ backgroundColor: "var(--mn-card)", borderBottom: "1px solid var(--mn-border)" }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "var(--mn-accent)" }}>
-            <span className="text-white font-bold text-sm">N</span>
-          </div>
+        <Link href="/" className="flex items-center gap-1.5">
+          <NewsLogo />
           <span className="text-xl font-bold tracking-tight">MyNews</span>
         </Link>
         <div className="flex items-center gap-2">

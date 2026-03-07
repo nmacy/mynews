@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, fetchSource, getFailedSources } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
+import { persistArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
@@ -127,6 +128,9 @@ export async function POST() {
         console.warn("[rescan] AI tagging skipped:", err);
       }
 
+      try { await persistArticles(unique); } catch (err) {
+        console.warn("[rescan] article persist failed:", err);
+      }
       setCache("all-articles", unique);
       send({ type: "done", completed: total, total, count: unique.length, aiTagged: aiTagCount });
       controller.close();

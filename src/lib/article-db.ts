@@ -85,6 +85,25 @@ export async function loadPersistedArticles(sourceIds: string[]): Promise<Articl
 }
 
 /**
+ * Update only tags and aiTagged for specific articles by ID.
+ * More efficient than persistArticles() which does a full upsert.
+ */
+export async function updateArticleTags(
+  updates: { id: string; tags: string[] }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+
+  await prisma.$transaction(
+    updates.map((u) =>
+      prisma.article.update({
+        where: { id: u.id },
+        data: { tags: JSON.stringify(u.tags), aiTagged: true },
+      })
+    )
+  );
+}
+
+/**
  * Delete all rows where expiresAt < now.
  */
 export async function pruneExpiredArticles(): Promise<void> {

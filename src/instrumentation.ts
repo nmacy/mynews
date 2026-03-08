@@ -6,8 +6,16 @@ export async function register() {
   async function refresh() {
     try {
       const { getAllArticles } = await import("@/lib/feeds");
-      await getAllArticles();
+      const articles = await getAllArticles();
       console.log("[background-refresh] Feed refresh complete");
+
+      try {
+        const { autoTagArticles, autoDiscoverTags } = await import("@/lib/auto-tagger");
+        await autoTagArticles(articles);
+        await autoDiscoverTags(articles);
+      } catch (err) {
+        console.warn("[background-refresh] Auto-tagger failed:", err);
+      }
     } catch (err) {
       console.error("[background-refresh] Feed refresh failed:", err);
     }

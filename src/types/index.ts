@@ -1,4 +1,4 @@
-export type SourceType = "rss" | "web";
+export type SourceType = "rss" | "web" | "sitemap";
 
 export interface Source {
   id: string;

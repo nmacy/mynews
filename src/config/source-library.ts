@@ -14,29 +14,29 @@ export const SOURCE_CATEGORIES = [
 
 export const SOURCE_LIBRARY: LibrarySource[] = [
   // ── Major News ─────────────────────────────────────────────
-  { id: "reuters", name: "Reuters", url: "https://www.reutersagency.com/feed/", priority: 1, category: "Major News" },
-  { id: "ap-news", name: "AP News", url: "https://rsshub.app/apnews/topics/apf-topnews", priority: 1, category: "Major News" },
+  { id: "reuters", name: "Reuters", url: "https://www.reuters.com/arc/outboundfeeds/news-sitemap/?outputType=xml", priority: 1, type: "sitemap", category: "Major News" },
+  { id: "ap-news", name: "AP News", url: "https://feedx.net/rss/ap.xml", priority: 1, category: "Major News" },
   { id: "al-jazeera", name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", priority: 1, category: "Major News" },
   { id: "pbs-newshour", name: "PBS NewsHour", url: "https://www.pbs.org/newshour/feeds/rss/headlines", priority: 1, category: "Major News" },
-  { id: "usa-today", name: "USA Today", url: "http://rssfeeds.usatoday.com/UsatodaycomNation-TopStories", priority: 2, category: "Major News" },
+  { id: "cnn", name: "CNN", url: "https://www.cnn.com", priority: 1, type: "web", category: "Major News" },
   { id: "abc-news", name: "ABC News", url: "https://abcnews.go.com/abcnews/topstories", priority: 2, category: "Major News" },
   { id: "bbc-news", name: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml", priority: 1, category: "Major News" },
   { id: "the-guardian", name: "The Guardian", url: "https://www.theguardian.com/world/rss", priority: 1, category: "Major News" },
   { id: "npr", name: "NPR", url: "https://feeds.npr.org/1001/rss.xml", priority: 1, category: "Major News" },
-  { id: "cnn", name: "CNN", url: "http://rss.cnn.com/rss/cnn_topstories.rss", priority: 1, category: "Major News" },
   { id: "nbc-news", name: "NBC News", url: "https://feeds.nbcnews.com/nbcnews/public/news", priority: 1, category: "Major News" },
   { id: "fox-news", name: "Fox News", url: "https://moxie.foxnews.com/google-publisher/latest.xml", priority: 2, category: "Major News" },
   { id: "the-hill", name: "The Hill", url: "https://thehill.com/feed/", priority: 2, category: "Major News" },
   { id: "axios", name: "Axios", url: "https://api.axios.com/feed/", priority: 2, category: "Major News" },
-  { id: "politico", name: "Politico", url: "https://www.politico.com/rss/politicopicks.xml", priority: 2, category: "Major News" },
+  { id: "politico", name: "Politico", url: "https://rss.politico.com/politics-news.xml", priority: 2, category: "Major News" },
   { id: "propublica", name: "ProPublica", url: "https://feeds.propublica.org/propublica/main", priority: 2, category: "Major News" },
   { id: "the-atlantic", name: "The Atlantic", url: "https://www.theatlantic.com/feed/all/", priority: 2, paywalled: true, category: "Major News" },
   { id: "vox", name: "Vox", url: "https://www.vox.com/rss/index.xml", priority: 2, category: "Major News" },
   { id: "slate", name: "Slate", url: "https://slate.com/feeds/all.rss", priority: 2, category: "Major News" },
   { id: "the-intercept", name: "The Intercept", url: "https://theintercept.com/feed/?rss", priority: 2, category: "Major News" },
   { id: "salon", name: "Salon", url: "https://www.salon.com/feed/", priority: 3, category: "Major News" },
-  { id: "the-daily-beast", name: "The Daily Beast", url: "https://feeds.thedailybeast.com/rss/articles", priority: 2, category: "Major News" },
-  { id: "semafor", name: "Semafor", url: "https://www.semafor.com/feed", priority: 2, category: "Major News" },
+  { id: "the-daily-beast", name: "The Daily Beast", url: "https://www.thedailybeast.com/arc/outboundfeeds/rss/", priority: 2, category: "Major News" },
+  { id: "usa-today", name: "USA Today", url: "https://www.usatoday.com/news/", priority: 1, type: "web", category: "Major News" },
+  { id: "semafor", name: "Semafor", url: "https://www.semafor.com", priority: 2, type: "web", category: "Major News" },
 
   // ── Technology ─────────────────────────────────────────────
   { id: "techcrunch", name: "TechCrunch", url: "https://techcrunch.com/feed/", priority: 2, category: "Technology" },
@@ -65,7 +65,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "phys-org", name: "Phys.org", url: "https://phys.org/rss-feed/", priority: 3, category: "Science" },
   { id: "live-science", name: "Live Science", url: "https://www.livescience.com/feeds/all", priority: 3, category: "Science" },
   { id: "nature", name: "Nature", url: "https://www.nature.com/nature.rss", priority: 1, paywalled: true, category: "Science" },
-  { id: "national-geographic", name: "National Geographic", url: "https://www.nationalgeographic.com/feed", priority: 2, category: "Science" },
+  { id: "national-geographic", name: "National Geographic", url: "https://www.nationalgeographic.com", priority: 2, type: "web", category: "Science" },
   { id: "popular-science", name: "Popular Science", url: "https://www.popsci.com/feed/", priority: 2, category: "Science" },
   { id: "popular-mechanics", name: "Popular Mechanics", url: "https://www.popularmechanics.com/rss/", priority: 3, category: "Science" },
   { id: "smithsonian-magazine", name: "Smithsonian Magazine", url: "https://www.smithsonianmag.com/rss/latest_articles/", priority: 2, category: "Science" },
@@ -76,7 +76,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "forbes", name: "Forbes", url: "https://www.forbes.com/innovation/feed2", priority: 2, category: "Business" },
   { id: "business-insider", name: "Business Insider", url: "https://markets.businessinsider.com/rss/news", priority: 2, paywalled: true, category: "Business" },
   { id: "bloomberg", name: "Bloomberg", url: "https://feeds.bloomberg.com/markets/news.rss", priority: 1, paywalled: true, category: "Business" },
-  { id: "wsj", name: "Wall Street Journal", url: "https://feeds.a.dj.com/rss/RSSWorldNews.xml", priority: 1, paywalled: true, category: "Business" },
+  { id: "wsj", name: "Wall Street Journal", url: "https://feeds.content.dowjones.io/public/rss/RSSWorldNews", priority: 1, paywalled: true, category: "Business" },
   { id: "financial-times", name: "Financial Times", url: "https://www.ft.com/?format=rss", priority: 1, paywalled: true, category: "Business" },
   { id: "washington-post", name: "Washington Post", url: "https://feeds.washingtonpost.com/rss/national", priority: 1, paywalled: true, category: "Business" },
   { id: "quartz", name: "Quartz", url: "https://qz.com/feed", priority: 2, category: "Business" },
@@ -91,7 +91,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
 
   // ── Sports ─────────────────────────────────────────────────
   { id: "cbs-sports", name: "CBS Sports", url: "https://www.cbssports.com/rss/headlines/", priority: 2, category: "Sports" },
-  { id: "bleacher-report", name: "Bleacher Report", url: "https://bleacherreport.com/articles/feed", priority: 2, category: "Sports" },
+  { id: "bleacher-report", name: "Bleacher Report", url: "https://bleacherreport.com", priority: 2, type: "web", category: "Sports" },
 
   // ── Entertainment ──────────────────────────────────────────
   { id: "variety", name: "Variety", url: "https://variety.com/feed/", priority: 2, paywalled: true, category: "Entertainment" },
@@ -113,9 +113,8 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "nintendo-life", name: "Nintendo Life", url: "https://www.nintendolife.com/feeds/latest", priority: 3, category: "Gaming" },
 
   // ── Health ─────────────────────────────────────────────────
-  { id: "webmd", name: "WebMD", url: "https://rssfeeds.webmd.com/rss/rss.aspx?RSSSource=RSS_PUBLIC", priority: 2, category: "Health" },
-  { id: "medical-news-today", name: "Medical News Today", url: "https://www.medicalnewstoday.com/newsrss", priority: 2, category: "Health" },
-  { id: "healthline", name: "Healthline", url: "https://www.healthline.com/rss", priority: 3, category: "Health" },
+  { id: "medical-news-today", name: "Medical News Today", url: "https://www.medicalnewstoday.com/news-1.xml", priority: 2, type: "sitemap", category: "Health" },
+  { id: "healthline", name: "Healthline", url: "https://www.healthline.com/rss/health-news", priority: 3, category: "Health" },
 
   // ── Other ──────────────────────────────────────────────────
   { id: "the-drive", name: "The Drive", url: "https://www.thedrive.com/feed", priority: 3, category: "Other" },

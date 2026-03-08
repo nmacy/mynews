@@ -8,6 +8,7 @@ import { persistArticles, loadPersistedArticles, pruneExpiredArticles } from "./
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
+import { fetchSitemapSource } from "./sitemap-parser";
 import { prisma } from "./prisma";
 import type { Article, Source, SourcesConfig } from "@/types";
 
@@ -67,6 +68,7 @@ export async function fetchSource(
   extraTags?: TagDefinition[],
 ): Promise<Article[]> {
   if (source.type === "web") return fetchWebSource(source, extraTags);
+  if (source.type === "sitemap") return fetchSitemapSource(source, extraTags);
 
   try {
     const feed = await parser.parseURL(source.url);
@@ -101,9 +103,30 @@ export async function fetchSource(
     }
 
     return articles;
-  } catch (error) {
-    console.error(`Failed to fetch ${source.name} (${source.url}):`, error);
-    throw error;
+  } catch (rssError) {
+    // RSS parsing failed — try sitemap, then web scraping as fallback
+    try {
+      const articles = await fetchSitemapSource(source, extraTags);
+      if (articles.length > 0) {
+        console.log(`[feeds] ${source.name}: RSS failed, sitemap fallback succeeded (${articles.length} articles)`);
+        return articles;
+      }
+    } catch {
+      // sitemap also failed, continue to web scraping
+    }
+
+    try {
+      const articles = await fetchWebSource(source, extraTags);
+      if (articles.length > 0) {
+        console.log(`[feeds] ${source.name}: RSS failed, web scraping fallback succeeded (${articles.length} articles)`);
+        return articles;
+      }
+    } catch {
+      // web scraping also failed
+    }
+
+    console.error(`Failed to fetch ${source.name} (${source.url}):`, rssError);
+    throw rssError;
   }
 }
 

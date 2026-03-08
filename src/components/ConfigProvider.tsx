@@ -34,6 +34,7 @@ interface ConfigContextValue {
   /** Ordered source group names for source bar */
   sourceBarOrder: string[];
   addSource: (source: Source) => void;
+  addSources: (sources: Source[]) => void;
   removeSource: (id: string) => void;
   toggleSource: (id: string) => void;
   togglePaywall: (id: string) => void;
@@ -151,6 +152,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const pendingSaveRef = useRef<Record<string, unknown>>({});
   // Track whether user has made changes (prevents server fetch from overwriting)
   const dirtyRef = useRef(false);
+  // Ref so async callbacks always see the latest serverLoaded value
+  const serverLoadedRef = useRef(false);
 
   // Load from localStorage on mount, then fetch admin defaults
   useEffect(() => {
@@ -159,11 +162,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     setDisabledSources(loadDisabled());
     setMounted(true);
 
-    // Fetch admin defaults; if user has no localStorage config, apply them
+    // Fetch admin defaults; only apply if user has no localStorage AND
+    // server settings haven't already been loaded (prevents race condition)
     fetchDefaultSources().then((sources) => {
       setAdminDefaults(sources);
       adminDefaultsRef.current = sources;
-      if (!stored) {
+      if (!stored && !serverLoadedRef.current && !dirtyRef.current) {
         setConfig({ sources });
       }
     });
@@ -194,6 +198,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         }
       }
       setServerLoaded(true);
+      serverLoadedRef.current = true;
     });
   }, [isAuthenticated, serverLoaded]);
 
@@ -201,6 +206,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === "unauthenticated") {
       setServerLoaded(false);
+      serverLoadedRef.current = false;
       dirtyRef.current = false;
       // Reload from localStorage when signing out
       setConfig(loadConfig());
@@ -248,6 +254,14 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     (source: Source) => {
       const cur = configRef.current;
       persist({ ...cur, sources: [...cur.sources, source] });
+    },
+    [persist]
+  );
+
+  const addSources = useCallback(
+    (sources: Source[]) => {
+      const cur = configRef.current;
+      persist({ ...cur, sources: [...cur.sources, ...sources] });
     },
     [persist]
   );
@@ -363,6 +377,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         featuredTags: mounted ? (config.featuredTags ?? DEFAULT_FEATURED_TAGS) : DEFAULT_FEATURED_TAGS,
         sourceBarOrder: mounted ? (config.sourceBarOrder ?? []) : [],
         addSource,
+        addSources,
         removeSource,
         toggleSource,
         togglePaywall,

@@ -570,11 +570,13 @@ function SourceLibraryGrid({
   activeSourceIds,
   activeSourceUrls,
   onAdd,
+  onAddAll,
 }: {
   sources: LibrarySource[];
   activeSourceIds: Set<string>;
   activeSourceUrls: Set<string>;
   onAdd: (source: LibrarySource) => void;
+  onAddAll?: (sources: LibrarySource[]) => void;
 }) {
   const grouped = useMemo(() => {
     const map = new Map<string, LibrarySource[]>();
@@ -603,26 +605,41 @@ function SourceLibraryGrid({
 
   return (
     <div className="space-y-4">
-      {categories.map((category) => (
-        <div key={category}>
-          <h4
-            className="text-xs font-semibold uppercase tracking-wide mb-2"
-            style={{ color: "var(--mn-muted)" }}
-          >
-            {category}
-          </h4>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {grouped.get(category)!.map((source) => (
-              <SourceLibraryCard
-                key={source.id}
-                source={source}
-                added={isAdded(source)}
-                onAdd={onAdd}
-              />
-            ))}
+      {categories.map((category) => {
+        const catSources = grouped.get(category)!;
+        const unadded = catSources.filter((s) => !isAdded(s));
+        return (
+          <div key={category}>
+            <div className="flex items-center justify-between mb-2">
+              <h4
+                className="text-xs font-semibold uppercase tracking-wide"
+                style={{ color: "var(--mn-muted)" }}
+              >
+                {category}
+              </h4>
+              {onAddAll && unadded.length > 0 && (
+                <button
+                  onClick={() => onAddAll(unadded)}
+                  className="text-xs font-medium px-2 py-0.5 rounded"
+                  style={{ color: "var(--mn-accent)" }}
+                >
+                  Add All ({unadded.length})
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {catSources.map((source) => (
+                <SourceLibraryCard
+                  key={source.id}
+                  source={source}
+                  added={isAdded(source)}
+                  onAdd={onAdd}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -867,132 +884,27 @@ function DiscoverSourcesInline({
   );
 }
 
-function AddSourcePanel({
-  activeSourceIds,
-  activeSourceUrls,
-  onAddLibrary,
-  onAddManual,
-}: {
-  activeSourceIds: Set<string>;
-  activeSourceUrls: Set<string>;
-  onAddLibrary: (source: LibrarySource) => void;
-  onAddManual: (source: Source, libSource: LibrarySource) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [customSources, setCustomSources] = useState<LibrarySource[]>([]);
-
-  useEffect(() => {
-    setCustomSources(loadCustomLibrarySources());
-  }, []);
-
-  const allLibrary = useMemo(
-    () => [...SOURCE_LIBRARY, ...customSources],
-    [customSources]
-  );
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return allLibrary;
-    const q = search.toLowerCase();
-    return allLibrary.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q)
-    );
-  }, [allLibrary, search]);
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-sm font-medium mt-3"
-        style={{ color: "var(--mn-accent)" }}
-      >
-        + Add Source
-      </button>
-    );
-  }
-
-  const handleAddManual = (source: Source, libSource: LibrarySource) => {
-    onAddManual(source, libSource);
-    saveCustomLibrarySource(libSource);
-    setCustomSources(loadCustomLibrarySources());
-  };
-
-  return (
-    <div
-      className="mt-3 space-y-4 p-3 rounded-xl"
-      style={{ backgroundColor: "var(--mn-bg)" }}
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Source Library</h3>
-        <button
-          onClick={() => {
-            setOpen(false);
-            setSearch("");
-          }}
-          className="text-sm font-medium"
-          style={{ color: "var(--mn-muted)" }}
-        >
-          Close
-        </button>
-      </div>
-
-      <input
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search sources..."
-        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-        style={{
-          backgroundColor: "var(--mn-card)",
-          border: "1px solid var(--mn-border)",
-          color: "var(--mn-fg)",
-        }}
-      />
-
-      <div className="max-h-80 overflow-y-auto">
-        <SourceLibraryGrid
-          sources={filtered}
-          activeSourceIds={activeSourceIds}
-          activeSourceUrls={activeSourceUrls}
-          onAdd={onAddLibrary}
-        />
-      </div>
-
-      <div
-        className="border-t pt-4"
-        style={{ borderColor: "var(--mn-border)" }}
-      >
-        <DiscoverSourcesInline
-          activeSourceIds={activeSourceIds}
-          activeSourceUrls={activeSourceUrls}
-          onAdd={onAddLibrary}
-        />
-      </div>
-
-      <div
-        className="border-t pt-4"
-        style={{ borderColor: "var(--mn-border)" }}
-      >
-        <ManualSourceForm onAdd={handleAddManual} />
-      </div>
-    </div>
-  );
-}
-
 function SourcesSection() {
   const {
     allSources,
     disabledSourceIds,
     addSource,
+    addSources,
     removeSource,
     toggleSource,
     togglePaywall,
   } = useConfig();
 
   const [expanded, setExpanded] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [libraryExpanded, setLibraryExpanded] = useState(false);
   const [search, setSearch] = useState("");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [customSources, setCustomSources] = useState<LibrarySource[]>([]);
+
+  useEffect(() => {
+    setCustomSources(loadCustomLibrarySources());
+  }, []);
 
   const activeSourceIds = useMemo(
     () => new Set(allSources.map((s) => s.id)),
@@ -1011,6 +923,21 @@ function SourcesSection() {
     );
   }, [allSources, search]);
 
+  const allLibrary = useMemo(
+    () => [...SOURCE_LIBRARY, ...customSources],
+    [customSources]
+  );
+
+  const filteredLibrary = useMemo(() => {
+    if (!librarySearch.trim()) return allLibrary;
+    const q = librarySearch.toLowerCase();
+    return allLibrary.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q)
+    );
+  }, [allLibrary, librarySearch]);
+
   const handleAddLibrary = (source: LibrarySource) => {
     addSource({
       id: source.id,
@@ -1022,9 +949,23 @@ function SourcesSection() {
     });
   };
 
+  const handleAddAll = (sources: LibrarySource[]) => {
+    addSources(
+      sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        url: source.url,
+        priority: source.priority,
+        paywalled: source.paywalled,
+        type: source.type,
+      }))
+    );
+  };
+
   const handleAddManual = (source: Source, libSource: LibrarySource) => {
-    void libSource; // saved to custom library by AddSourcePanel
     addSource(source);
+    saveCustomLibrarySource(libSource);
+    setCustomSources(loadCustomLibrarySources());
   };
 
   return (
@@ -1051,54 +992,137 @@ function SourcesSection() {
       </button>
 
       {expanded && (
-        <>
-          {allSources.length > 0 && (
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search sources..."
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none mt-4"
-              style={{
-                backgroundColor: "var(--mn-bg)",
-                border: "1px solid var(--mn-border)",
-                color: "var(--mn-fg)",
-              }}
-            />
-          )}
+        <div className="mt-4 space-y-3">
+          {/* Your Sources sub-section */}
+          <div
+            className="rounded-xl p-3"
+            style={{ backgroundColor: "var(--mn-bg)" }}
+          >
+            <button
+              onClick={() => setSourcesExpanded(!sourcesExpanded)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <h3 className="text-sm font-semibold">
+                Your Sources
+                <span className="font-normal ml-1.5" style={{ color: "var(--mn-muted)" }}>
+                  ({allSources.length})
+                </span>
+              </h3>
+              <span
+                className="text-xs transition-transform duration-200"
+                style={{ color: "var(--mn-muted)", transform: sourcesExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
+              >
+                &#9660;
+              </span>
+            </button>
 
-          <div className="space-y-2 mt-3">
-            {filteredSources.map((source) => (
-              <SourceRow
-                key={source.id}
-                source={source}
-                disabled={disabledSourceIds.has(source.id)}
-                onToggle={() => toggleSource(source.id)}
-                onRemove={() => removeSource(source.id)}
-                onTogglePaywall={() => togglePaywall(source.id)}
-              />
-            ))}
+            {sourcesExpanded && (
+              <>
+                {allSources.length > 0 && (
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search your sources..."
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none mt-3"
+                    style={{
+                      backgroundColor: "var(--mn-card)",
+                      border: "1px solid var(--mn-border)",
+                      color: "var(--mn-fg)",
+                    }}
+                  />
+                )}
+
+                <div className="space-y-2 mt-3">
+                  {filteredSources.map((source) => (
+                    <SourceRow
+                      key={source.id}
+                      source={source}
+                      disabled={disabledSourceIds.has(source.id)}
+                      onToggle={() => toggleSource(source.id)}
+                      onRemove={() => removeSource(source.id)}
+                      onTogglePaywall={() => togglePaywall(source.id)}
+                    />
+                  ))}
+                </div>
+
+                {allSources.length > 0 && filteredSources.length === 0 && (
+                  <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
+                    No sources match &ldquo;{search}&rdquo;
+                  </p>
+                )}
+
+                {allSources.length === 0 && (
+                  <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
+                    No sources configured
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
-          {allSources.length > 0 && filteredSources.length === 0 && (
-            <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
-              No sources match &ldquo;{search}&rdquo;
-            </p>
-          )}
+          {/* Source Library sub-section */}
+          <div
+            className="rounded-xl p-3"
+            style={{ backgroundColor: "var(--mn-bg)" }}
+          >
+            <button
+              onClick={() => setLibraryExpanded(!libraryExpanded)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <h3 className="text-sm font-semibold">Source Library</h3>
+              <span
+                className="text-xs transition-transform duration-200"
+                style={{ color: "var(--mn-muted)", transform: libraryExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
+              >
+                &#9660;
+              </span>
+            </button>
 
-          {allSources.length === 0 && (
-            <p className="text-sm py-4 text-center" style={{ color: "var(--mn-muted2)" }}>
-              No sources configured
-            </p>
-          )}
+            {libraryExpanded && (
+              <div className="mt-3 space-y-4">
+                <input
+                  type="text"
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  placeholder="Search sources..."
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{
+                    backgroundColor: "var(--mn-card)",
+                    border: "1px solid var(--mn-border)",
+                    color: "var(--mn-fg)",
+                  }}
+                />
 
-          <AddSourcePanel
-            activeSourceIds={activeSourceIds}
-            activeSourceUrls={activeSourceUrls}
-            onAddLibrary={handleAddLibrary}
-            onAddManual={handleAddManual}
-          />
-        </>
+                <SourceLibraryGrid
+                  sources={filteredLibrary}
+                  activeSourceIds={activeSourceIds}
+                  activeSourceUrls={activeSourceUrls}
+                  onAdd={handleAddLibrary}
+                  onAddAll={handleAddAll}
+                />
+
+                <div
+                  className="border-t pt-4"
+                  style={{ borderColor: "var(--mn-border)" }}
+                >
+                  <DiscoverSourcesInline
+                    activeSourceIds={activeSourceIds}
+                    activeSourceUrls={activeSourceUrls}
+                    onAdd={handleAddLibrary}
+                  />
+                </div>
+
+                <div
+                  className="border-t pt-4"
+                  style={{ borderColor: "var(--mn-border)" }}
+                >
+                  <ManualSourceForm onAdd={handleAddManual} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

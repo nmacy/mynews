@@ -58,10 +58,12 @@ function TagContent() {
     }
 
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set("sources", JSON.stringify(config.sources));
 
-    fetch(`/api/feeds?${params}`)
+    fetch("/api/feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sources: config.sources }),
+    })
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles as Article[]);

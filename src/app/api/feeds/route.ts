@@ -54,7 +54,34 @@ export async function GET(request: NextRequest) {
   });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // If the request has a JSON body with "sources", treat it as an article fetch
+  // (used by the homepage to avoid URL length limits with many sources)
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = await request.json();
+      if (body.sources && Array.isArray(body.sources)) {
+        const sources = body.sources as Source[];
+        const safeSources = sources.filter((s) => isSafeUrl(s.url));
+        if (safeSources.length === 0) {
+          return NextResponse.json({ error: "No valid source URLs" }, { status: 400 });
+        }
+        const cacheKey = `articles:${safeSources.map((s) => s.id).sort().join(",")}`;
+        const articles = await getArticlesForSources(safeSources);
+        const failedSources = getFailedSources(cacheKey);
+        return NextResponse.json({
+          count: articles.length,
+          articles,
+          ...(failedSources.length > 0 ? { failedSources } : {}),
+        });
+      }
+    } catch {
+      // Not valid JSON or no sources — fall through to admin rescan
+    }
+  }
+
+  // Admin rescan flow
   const session = await auth();
   if (!isAdmin(session)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

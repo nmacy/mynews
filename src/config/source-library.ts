@@ -23,6 +23,10 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "bbc-news", name: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml", priority: 1, category: "Major News" },
   { id: "the-guardian", name: "The Guardian", url: "https://www.theguardian.com/world/rss", priority: 1, category: "Major News" },
   { id: "npr", name: "NPR", url: "https://feeds.npr.org/1001/rss.xml", priority: 1, category: "Major News" },
+  { id: "nyt-technology", name: "NYT Technology", url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", priority: 1, paywalled: true, category: "Major News" },
+  { id: "nyt-world", name: "NYT World", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", priority: 1, paywalled: true, category: "Major News" },
+  { id: "nyt-business", name: "NYT Business", url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", priority: 1, paywalled: true, category: "Major News" },
+  { id: "nyt-science", name: "NYT Science", url: "https://rss.nytimes.com/services/xml/rss/nyt/Science.xml", priority: 2, paywalled: true, category: "Major News" },
   { id: "nbc-news", name: "NBC News", url: "https://feeds.nbcnews.com/nbcnews/public/news", priority: 1, category: "Major News" },
   { id: "fox-news", name: "Fox News", url: "https://moxie.foxnews.com/google-publisher/latest.xml", priority: 2, category: "Major News" },
   { id: "the-hill", name: "The Hill", url: "https://thehill.com/feed/", priority: 2, category: "Major News" },
@@ -51,6 +55,8 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "the-verge", name: "The Verge", url: "https://www.theverge.com/rss/index.xml", priority: 2, category: "Technology" },
   { id: "wired", name: "Wired", url: "https://www.wired.com/feed/rss", priority: 2, paywalled: true, category: "Technology" },
   { id: "ars-technica", name: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", priority: 2, category: "Technology" },
+  { id: "bbc-technology", name: "BBC Technology", url: "https://feeds.bbci.co.uk/news/technology/rss.xml", priority: 2, category: "Technology" },
+  { id: "the-guardian-technology", name: "The Guardian Technology", url: "https://www.theguardian.com/technology/rss", priority: 2, category: "Technology" },
   { id: "techradar", name: "TechRadar", url: "https://www.techradar.com/rss", priority: 2, category: "Technology" },
   { id: "zdnet", name: "ZDNet", url: "https://www.zdnet.com/news/rss.xml", priority: 2, category: "Technology" },
   { id: "venturebeat", name: "VentureBeat", url: "https://venturebeat.com/feed/", priority: 2, category: "Technology" },
@@ -84,12 +90,14 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "inc", name: "Inc.", url: "https://www.inc.com/rss/", priority: 3, category: "Business" },
   { id: "entrepreneur", name: "Entrepreneur", url: "https://www.entrepreneur.com/latest.rss", priority: 3, category: "Business" },
   { id: "the-economist", name: "The Economist", url: "https://www.economist.com/latest/rss.xml", priority: 1, paywalled: true, category: "Business" },
+  { id: "bbc-business", name: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml", priority: 2, category: "Business" },
 
   // ── World ──────────────────────────────────────────────────
   { id: "france24", name: "France 24", url: "https://www.france24.com/en/rss", priority: 2, category: "World" },
   { id: "dw", name: "Deutsche Welle", url: "https://rss.dw.com/rdf/rss-en-all", priority: 2, category: "World" },
 
   // ── Sports ─────────────────────────────────────────────────
+  { id: "espn", name: "ESPN", url: "https://www.espn.com/espn/rss/news", priority: 1, category: "Sports" },
   { id: "cbs-sports", name: "CBS Sports", url: "https://www.cbssports.com/rss/headlines/", priority: 2, category: "Sports" },
   { id: "bleacher-report", name: "Bleacher Report", url: "https://bleacherreport.com", priority: 2, type: "web", category: "Sports" },
 
@@ -101,6 +109,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "the-new-yorker", name: "The New Yorker", url: "https://www.newyorker.com/feed/everything", priority: 2, paywalled: true, category: "Entertainment" },
   { id: "pitchfork", name: "Pitchfork", url: "https://pitchfork.com/feed/feed-news/rss", priority: 3, category: "Entertainment" },
   { id: "the-av-club", name: "The A.V. Club", url: "https://www.avclub.com/rss", priority: 3, category: "Entertainment" },
+  { id: "bbc-entertainment", name: "BBC Entertainment", url: "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", priority: 2, category: "Entertainment" },
 
   // ── Gaming ─────────────────────────────────────────────────
   { id: "ign", name: "IGN", url: "https://feeds.ign.com/ign/all", priority: 2, category: "Gaming" },
@@ -115,6 +124,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   // ── Health ─────────────────────────────────────────────────
   { id: "medical-news-today", name: "Medical News Today", url: "https://www.medicalnewstoday.com/news-1.xml", priority: 2, type: "sitemap", category: "Health" },
   { id: "healthline", name: "Healthline", url: "https://www.healthline.com/rss/health-news", priority: 3, category: "Health" },
+  { id: "bbc-health", name: "BBC Health", url: "https://feeds.bbci.co.uk/news/health/rss.xml", priority: 2, category: "Health" },
 
   // ── Other ──────────────────────────────────────────────────
   { id: "the-drive", name: "The Drive", url: "https://www.thedrive.com/feed", priority: 3, category: "Other" },

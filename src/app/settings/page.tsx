@@ -28,6 +28,7 @@ import { DefaultSourcesSection } from "@/components/settings/DefaultSourcesSecti
 import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
+import { SystemStatusSection } from "@/components/settings/SystemStatusSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
 import { useSourceGroups } from "@/components/layout/SourceBar";
 import { useTagDefinitions, useTagMap } from "@/components/TagProvider";
@@ -1408,6 +1409,8 @@ function AdminSettingsGroup() {
           <RescanSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <CacheSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <SystemStatusSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <AdminUsersSection />
         </div>

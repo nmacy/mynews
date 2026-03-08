@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useSession } from "next-auth/react";
 import type { Source, UserConfig } from "@/types";
 import defaultConfig from "@/config/sources.json";
+import { SOURCE_ID_MIGRATION } from "@/config/source-id-migration";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
@@ -154,12 +155,37 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const dirtyRef = useRef(false);
   // Ref so async callbacks always see the latest serverLoaded value
   const serverLoadedRef = useRef(false);
+  // Whether localStorage had explicit user data on mount
+  const hadLocalStorageRef = useRef(false);
 
   // Load from localStorage on mount, then fetch admin defaults
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    setConfig(loadConfig());
-    setDisabledSources(loadDisabled());
+    hadLocalStorageRef.current = !!stored;
+    const loaded = loadConfig();
+    const loadedDisabled = loadDisabled();
+
+    // Migrate old source IDs to canonical SOURCE_LIBRARY IDs
+    let migrated = false;
+    const migratedSources = loaded.sources.map((s) => {
+      const newId = SOURCE_ID_MIGRATION[s.id];
+      if (newId) { migrated = true; return { ...s, id: newId }; }
+      return s;
+    });
+    const migratedDisabled = new Set<string>();
+    loadedDisabled.forEach((id) => {
+      const newId = SOURCE_ID_MIGRATION[id];
+      if (newId) { migrated = true; migratedDisabled.add(newId); }
+      else migratedDisabled.add(id);
+    });
+    if (migrated) {
+      loaded.sources = migratedSources;
+      saveConfigLocal(loaded);
+      saveDisabledLocal(migratedDisabled);
+    }
+
+    setConfig(loaded);
+    setDisabledSources(migrated ? migratedDisabled : loadedDisabled);
     setMounted(true);
 
     // Fetch admin defaults; only apply if user has no localStorage AND
@@ -173,7 +199,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // When authenticated, load from server (overrides localStorage)
+  // When authenticated, load from server — but respect localStorage as local truth
   useEffect(() => {
     if (!isAuthenticated || serverLoaded) return;
 
@@ -181,12 +207,33 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         // Don't overwrite if the user changed something while session was loading
         if (!dirtyRef.current) {
-          const hasSources = data.sources && data.sources.length > 0;
-          if (hasSources) {
+          const serverHasSources = data.sources && data.sources.length > 0;
+          const local = configRef.current;
+          const localHasSources = hadLocalStorageRef.current && local.sources.length > 0;
+
+          if (localHasSources && serverHasSources && local.sources.length !== data.sources.length) {
+            // localStorage differs from server — localStorage is more recent on this device.
+            // Push localStorage to server to sync, don't overwrite local config.
+            saveServerSettings({
+              sources: local.sources,
+              featuredTags: local.featuredTags ?? [],
+              sourceBarOrder: local.sourceBarOrder ?? [],
+              disabledSourceIds: [...disabledRef.current],
+            });
+          } else if (localHasSources && !serverHasSources) {
+            // Server has no sources but localStorage does — sync to server
+            saveServerSettings({
+              sources: local.sources,
+              featuredTags: local.featuredTags ?? [],
+              sourceBarOrder: local.sourceBarOrder ?? [],
+              disabledSourceIds: [...disabledRef.current],
+            });
+          } else if (serverHasSources) {
+            // No localStorage (new device) or counts match — use server data
             setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
             setDisabledSources(new Set(data.disabledSourceIds));
           } else if (adminDefaultsRef.current) {
-            // New user with no saved sources → apply admin defaults
+            // New user with no saved sources anywhere → apply admin defaults
             setConfig({ sources: adminDefaultsRef.current });
           }
         }
@@ -213,6 +260,32 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       setDisabledSources(loadDisabled());
     }
   }, [status]);
+
+  const flushPendingSave = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (Object.keys(pendingSaveRef.current).length > 0) {
+      const merged = { ...pendingSaveRef.current };
+      pendingSaveRef.current = {};
+      // Use sendBeacon for reliability during page unload
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          "/api/user/settings",
+          new Blob([JSON.stringify(merged)], { type: "application/json" })
+        );
+      } else {
+        saveServerSettings(merged);
+      }
+    }
+  }, []);
+
+  // Flush pending saves before page unload to prevent data loss
+  useEffect(() => {
+    window.addEventListener("beforeunload", flushPendingSave);
+    return () => window.removeEventListener("beforeunload", flushPendingSave);
+  }, [flushPendingSave]);
 
   const debouncedServerSave = useCallback(
     (data: Record<string, unknown>) => {

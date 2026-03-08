@@ -91,6 +91,12 @@ model ServerDefaultSources {
   updatedAt DateTime @updatedAt
 }
 
+model ServerConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model Article {
   id          String   @id
   url         String   @unique

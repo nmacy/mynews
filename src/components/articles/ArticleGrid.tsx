@@ -1,7 +1,51 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
 import { ArticleCard } from "./ArticleCard";
 import type { Article } from "@/types";
 
-export function ArticleGrid({ articles }: { articles: Article[] }) {
+const PAGE_SIZE = 30;
+
+export function ArticleGrid({
+  articles,
+  initialVisible,
+}: {
+  articles: Article[];
+  initialVisible?: number;
+}) {
+  const [visibleCount, setVisibleCount] = useState(
+    initialVisible ? Math.min(initialVisible, articles.length) : Math.min(PAGE_SIZE, articles.length)
+  );
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reset visible count when articles change (e.g. filter change)
+  useEffect(() => {
+    setVisibleCount(
+      initialVisible ? Math.min(initialVisible, articles.length) : Math.min(PAGE_SIZE, articles.length)
+    );
+  }, [articles, initialVisible]);
+
+  const loadMore = useCallback(() => {
+    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, articles.length));
+  }, [articles.length]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
   if (articles.length === 0) {
     return (
       <div className="text-center py-16 text-gray-500">
@@ -11,11 +55,18 @@ export function ArticleGrid({ articles }: { articles: Article[] }) {
     );
   }
 
+  const visible = articles.slice(0, visibleCount);
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {articles.map((article) => (
-        <ArticleCard key={article.id} article={article} />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {visible.map((article) => (
+          <ArticleCard key={article.id} article={article} />
+        ))}
+      </div>
+      {visibleCount < articles.length && (
+        <div ref={sentinelRef} className="h-10" />
+      )}
+    </>
   );
 }

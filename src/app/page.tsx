@@ -82,13 +82,21 @@ function HomeContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourcesKey]);
 
+  const [initialVisible, setInitialVisible] = useState<number | undefined>(undefined);
+
   useEffect(() => {
     if (loading) return;
     const savedY = sessionStorage.getItem("mn-scroll-y");
     if (savedY) {
       sessionStorage.removeItem("mn-scroll-y");
+      const scrollY = parseInt(savedY, 10);
+      if (scrollY > 0) {
+        // Estimate how many articles need to be visible to cover the scroll position
+        // ~400px per row, 3 columns per row, plus a buffer page
+        setInitialVisible(Math.ceil(scrollY / 400) * 3 + 30);
+      }
       requestAnimationFrame(() => {
-        window.scrollTo(0, parseInt(savedY, 10));
+        window.scrollTo(0, scrollY);
       });
     }
   }, [loading]);
@@ -155,7 +163,7 @@ function HomeContent() {
       ) : (
         <>
           {hero && <HeroArticle article={hero} />}
-          <ArticleGrid articles={grid} />
+          <ArticleGrid articles={grid} initialVisible={initialVisible} />
         </>
       )}
     </>

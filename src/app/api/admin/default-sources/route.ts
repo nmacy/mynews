@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { SOURCE_LIBRARY } from "@/config/source-library";
+import sourcesConfig from "@/config/sources.json";
 import type { Source } from "@/types";
 
 export async function GET() {
@@ -17,13 +18,18 @@ export async function GET() {
 
     if (row) {
       const sources = JSON.parse(row.sources) as Source[];
-      return NextResponse.json({ sourceIds: sources.map((s) => s.id) });
+      if (sources.length > 0) {
+        return NextResponse.json({ sourceIds: sources.map((s) => s.id) });
+      }
     }
   } catch (err) {
     console.error("[admin/default-sources] GET error:", err);
   }
 
-  return NextResponse.json({ sourceIds: [] });
+  // No admin-configured defaults — use sources.json IDs directly
+  // (sources.json now uses canonical SOURCE_LIBRARY IDs)
+  const fallbackIds = sourcesConfig.sources.map((s) => s.id);
+  return NextResponse.json({ sourceIds: fallbackIds });
 }
 
 export async function PUT(request: NextRequest) {

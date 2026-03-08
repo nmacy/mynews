@@ -1,55 +1,67 @@
 import { prisma } from "./prisma";
+import { getRetentionDays } from "./server-config";
 import type { Article } from "@/types";
 
-const RETENTION_DAYS = 14;
+const BATCH_SIZE = 50; // 50 × 17 columns = 850 params, under SQLite's 999 limit
 
-function expiresAt(): Date {
+function expiresAt(days: number): Date {
   const d = new Date();
-  d.setDate(d.getDate() + RETENTION_DAYS);
+  d.setDate(d.getDate() + days);
   return d;
 }
 
 /**
- * Bulk upsert articles into SQLite.
- * Uses `url` as the unique key. On conflict, refreshes lastSeen/expiresAt
- * and updates tags/imageUrl if the new data is better.
+ * Bulk upsert articles into SQLite using raw SQL for performance.
+ * Batches in chunks of 50 to stay under SQLite's 999 parameter limit.
  */
 export async function persistArticles(articles: Article[]): Promise<void> {
   if (articles.length === 0) return;
 
-  const exp = expiresAt();
+  const retention = await getRetentionDays();
+  const exp = expiresAt(retention);
+  const now = new Date();
 
-  await prisma.$transaction(
-    articles.map((a) =>
-      prisma.article.upsert({
-        where: { url: a.url },
-        create: {
-          id: a.id,
-          url: a.url,
-          title: a.title,
-          description: a.description,
-          content: a.content,
-          imageUrl: a.imageUrl,
-          publishedAt: new Date(a.publishedAt),
-          sourceId: a.source.id,
-          sourceName: a.source.name,
-          categories: JSON.stringify(a.categories ?? []),
-          tags: JSON.stringify(a.tags ?? []),
-          priority: a.priority,
-          paywalled: a.paywalled,
-          aiTagged: a._aiTagged ?? false,
-          expiresAt: exp,
-        },
-        update: {
-          lastSeen: new Date(),
-          expiresAt: exp,
-          ...(a.tags && a.tags.length > 0 ? { tags: JSON.stringify(a.tags) } : {}),
-          ...(a.imageUrl ? { imageUrl: a.imageUrl } : {}),
-          ...(a._aiTagged ? { aiTagged: true } : {}),
-        },
-      })
-    )
-  );
+  for (let i = 0; i < articles.length; i += BATCH_SIZE) {
+    const batch = articles.slice(i, i + BATCH_SIZE);
+    const placeholders: string[] = [];
+    const values: unknown[] = [];
+
+    for (const a of batch) {
+      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      values.push(
+        a.id,
+        a.url,
+        a.title,
+        a.description,
+        a.content,
+        a.imageUrl ?? null,
+        new Date(a.publishedAt).toISOString(),
+        a.source.id,
+        a.source.name,
+        JSON.stringify(a.categories ?? []),
+        JSON.stringify(a.tags ?? []),
+        a.priority ?? 2,
+        a.paywalled ? 1 : 0,
+        a._aiTagged ? 1 : 0,
+        now.toISOString(),  // firstSeen
+        now.toISOString(),  // lastSeen
+        exp.toISOString(),  // expiresAt
+      );
+    }
+
+    const sql = `
+      INSERT INTO Article (id, url, title, description, content, imageUrl, publishedAt, sourceId, sourceName, categories, tags, priority, paywalled, aiTagged, firstSeen, lastSeen, expiresAt)
+      VALUES ${placeholders.join(", ")}
+      ON CONFLICT(url) DO UPDATE SET
+        lastSeen = excluded.lastSeen,
+        expiresAt = excluded.expiresAt,
+        tags = CASE WHEN LENGTH(excluded.tags) > 4 THEN excluded.tags ELSE Article.tags END,
+        imageUrl = CASE WHEN excluded.imageUrl IS NOT NULL THEN excluded.imageUrl ELSE Article.imageUrl END,
+        aiTagged = CASE WHEN excluded.aiTagged = 1 THEN 1 ELSE Article.aiTagged END
+    `;
+
+    await prisma.$executeRawUnsafe(sql, ...values);
+  }
 }
 
 /**

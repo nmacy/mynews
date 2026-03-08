@@ -48,6 +48,11 @@ export async function GET() {
   });
 }
 
+// POST alias for PUT — sendBeacon can only POST
+export async function POST(request: Request) {
+  return PUT(request);
+}
+
 export async function PUT(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {

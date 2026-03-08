@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllArticles, getArticlesForSources, getSources, fetchSource, getFailedSources } from "@/lib/feeds";
+import { getAllArticles, getArticlesForSources, getSources, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
 import { persistArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
@@ -99,12 +99,22 @@ export async function POST(request: NextRequest) {
 
       const allArticles: Article[] = [];
       const customTags = await getCustomTags();
+      let completedCount = 0;
 
-      for (let i = 0; i < total; i++) {
-        const source = sources[i];
-        send({ type: "progress", completed: i, total, source: source.name });
-        const articles = await fetchSource(source, customTags);
-        allArticles.push(...articles);
+      const results = await allSettledWithLimit(
+        sources.map((source) => async () => {
+          const articles = await fetchSource(source, customTags);
+          completedCount++;
+          send({ type: "progress", completed: completedCount, total, source: source.name });
+          return articles;
+        }),
+        RSS_CONCURRENCY,
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          allArticles.push(...result.value);
+        }
       }
 
       // Deduplicate

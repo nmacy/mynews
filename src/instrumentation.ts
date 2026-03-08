@@ -43,12 +43,26 @@ export async function register() {
     }
   }
 
-  // One-time migration of old source IDs to canonical SOURCE_LIBRARY IDs
+  // One-time migrations
   try {
     const { migrateSourceIds } = await import("@/lib/migrate-source-ids");
     await migrateSourceIds();
   } catch (err) {
     console.error("[instrumentation] Source ID migration failed:", err);
+  }
+
+  // One-time reset of AI tags after prompt improvement (v2)
+  try {
+    const { getServerConfig, setServerConfig } = await import("@/lib/server-config");
+    const done = await getServerConfig("aiTagsResetV2");
+    if (done !== "true") {
+      const { prisma } = await import("@/lib/prisma");
+      await prisma.$executeRawUnsafe(`UPDATE Article SET aiTagged = 0, tags = '[]'`);
+      await setServerConfig("aiTagsResetV2", "true");
+      console.log("[instrumentation] Reset AI tags for re-tagging with improved prompt");
+    }
+  } catch (err) {
+    console.error("[instrumentation] AI tag reset failed:", err);
   }
 
   // Initial refresh (fire-and-forget, don't block server boot)

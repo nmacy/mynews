@@ -1,4 +1,4 @@
-import { TAG_DEFINITIONS, TAG_MAP } from "@/config/tags";
+import { TAG_DEFINITIONS } from "@/config/tags";
 import type { Keyword, TagDefinition } from "@/config/tags";
 
 interface CompiledTag {
@@ -27,14 +27,6 @@ function compileDefs(defs: TagDefinition[]): CompiledTag[] {
 
 const staticCompiledTags: CompiledTag[] = compileDefs(TAG_DEFINITIONS);
 
-function addWithParents(matched: Set<string>, slug: string, tagMap: Map<string, TagDefinition>) {
-  let current: string | undefined = slug;
-  while (current && !matched.has(current)) {
-    matched.add(current);
-    current = tagMap.get(current)?.parent;
-  }
-}
-
 export function assignTags(
   article: { title: string; description: string },
   extraTags?: TagDefinition[],
@@ -46,14 +38,10 @@ export function assignTags(
     ? [...staticCompiledTags, ...compileDefs(extraTags)]
     : staticCompiledTags;
 
-  const tagMap = extraTags && extraTags.length > 0
-    ? new Map([...TAG_MAP.entries(), ...extraTags.map((t) => [t.slug, t] as const)])
-    : TAG_MAP;
-
   for (const { slug, pattern } of compiled) {
     if (matched.has(slug)) continue;
     if (pattern.test(text)) {
-      addWithParents(matched, slug, tagMap);
+      matched.add(slug);
     }
   }
 

@@ -17,13 +17,19 @@ function buildPrompt(articles: TagRequest["articles"], tagList: string): string 
     .map((a) => `- ID: ${a.id}\n  Title: ${a.title}\n  Description: ${a.description}`)
     .join("\n");
 
-  return `You are a news article tagger. Assign up to ${MAX_TAGS_PER_ARTICLE} tags to each article from ONLY these tags: ${tagList}.
+  return `You are a news article tagger. Your job is to identify each article's PRIMARY subject matter — what the article is fundamentally about, not topics it briefly mentions.
+
+Rules:
+- Assign 1-${MAX_TAGS_PER_ARTICLE} tags per article from ONLY these tags: ${tagList}.
+- Only tag the CORE topic(s) the article is centrally about. If an article mentions technology in passing but is really about politics, tag it politics — NOT technology.
+- Prefer specific tags over broad ones. For example, use "ai" instead of "technology" if the article is specifically about AI. Only use "technology" if the article is broadly about the tech industry itself.
+- When in doubt, fewer tags are better. An article with 1 accurate tag is better than 3 loosely-related tags.
 
 Articles:
 ${articleBlock}
 
 Respond with ONLY a JSON object mapping article IDs to arrays of tag slugs. No other text.
-Example: {"abc123": ["ai", "privacy"], "def456": ["economy"]}`;
+Example: {"abc123": ["ai"], "def456": ["economy"]}`;
 }
 
 function extractTagMap(obj: Record<string, unknown>, validSlugs: Set<string>): Record<string, string[]> {

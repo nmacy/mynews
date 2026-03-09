@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
-import { persistArticles } from "@/lib/article-db";
+import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { tagArticlesWithAi } from "@/lib/ai-tagger";
+import { assignTags } from "@/lib/tagger";
 import { getAllTagDefinitions, getCustomTags } from "@/lib/custom-tags";
 import type { Article, Source, AiProvider } from "@/types";
 
@@ -117,14 +118,35 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Deduplicate
+      // Deduplicate fresh articles
       const seen = new Set<string>();
       const unique = allArticles.filter((a) => {
         if (seen.has(a.url)) return false;
         seen.add(a.url);
         return true;
       });
-      unique.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+      // Merge DB-only articles (rotated out of RSS but still persisted)
+      try {
+        const sourceIds = sources.map((s) => s.id);
+        const persisted = await loadPersistedArticles(sourceIds);
+        const rssUrls = new Set(unique.map((a) => a.url));
+        const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
+        // Re-apply keyword tags to DB-only articles
+        for (const article of dbOnly) {
+          article.tags = assignTags({ title: article.title, description: article.description }, customTags);
+        }
+        unique.push(...dbOnly);
+      } catch (err) {
+        console.warn("[rescan] DB article merge failed:", err);
+      }
+
+      unique.sort((a, b) => {
+        const aHasTs = a._hasTimestamp !== false;
+        const bHasTs = b._hasTimestamp !== false;
+        if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
 
       // AI tagging pass (if enabled)
       let aiTagCount = 0;

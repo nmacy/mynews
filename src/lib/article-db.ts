@@ -80,6 +80,7 @@ export async function loadPersistedArticles(sourceIds: string[]): Promise<Articl
       expiresAt: { gt: new Date() },
     },
     orderBy: { publishedAt: "desc" },
+    take: 500,
   });
 
   return rows.map((r) => ({

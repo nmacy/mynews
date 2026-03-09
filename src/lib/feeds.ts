@@ -29,6 +29,8 @@ const ALL_ARTICLES_KEY = "all-articles";
 const FAILED_SOURCES_KEY = "failed-sources";
 const OG_CONCURRENCY = 10; // max concurrent OG requests
 export const RSS_CONCURRENCY = 10; // max concurrent RSS fetches
+const SOURCE_FEED_CACHE_PREFIX = "source-feed:";
+const SOURCE_FEED_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Track in-flight OG fill jobs so we don't double-trigger */
 const ogFillInFlight = new Set<string>();
@@ -199,7 +201,14 @@ async function refreshArticles(
   const customTags = await getCustomTags();
 
   const results = await allSettledWithLimit(
-    sources.map((source) => () => fetchSource(source, customTags)),
+    sources.map((source) => async () => {
+      const cacheKeyForSource = SOURCE_FEED_CACHE_PREFIX + source.id;
+      const cached = getCached<Article[]>(cacheKeyForSource);
+      if (cached) return cached;
+      const articles = await fetchSource(source, customTags);
+      setCache(cacheKeyForSource, articles, SOURCE_FEED_TTL_MS);
+      return articles;
+    }),
     RSS_CONCURRENCY,
   );
 
@@ -307,7 +316,21 @@ export async function getAllArticles(): Promise<Article[]> {
     return status.data;
   }
 
-  // Cache miss — synchronous refresh
+  // Cache miss — try DB first for instant response
+  const allSourceIds = sources.map((s) => s.id);
+  const dbArticles = await loadPersistedArticles(allSourceIds);
+  if (dbArticles.length > 0) {
+    dbArticles.sort((a, b) => {
+      const aHasTs = a._hasTimestamp !== false;
+      const bHasTs = b._hasTimestamp !== false;
+      if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
+      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+    });
+    setCache(ALL_ARTICLES_KEY, dbArticles);
+    triggerBackgroundRefresh(sources, ALL_ARTICLES_KEY);
+    return dbArticles;
+  }
+  // DB empty — synchronous refresh (first-ever load)
   return refreshArticles(sources, ALL_ARTICLES_KEY);
 }
 
@@ -386,6 +409,20 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
     return status.data;
   }
 
-  // Cache miss — synchronous refresh
+  // Cache miss — try DB first for instant response
+  const sourceIds = sources.map((s) => s.id);
+  const dbArticles = await loadPersistedArticles(sourceIds);
+  if (dbArticles.length > 0) {
+    dbArticles.sort((a, b) => {
+      const aHasTs = a._hasTimestamp !== false;
+      const bHasTs = b._hasTimestamp !== false;
+      if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
+      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+    });
+    setCache(cacheKey, dbArticles);
+    triggerBackgroundRefresh(sources, cacheKey);
+    return dbArticles;
+  }
+  // DB empty — synchronous refresh (first-ever load)
   return refreshArticles(sources, cacheKey);
 }

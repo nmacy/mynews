@@ -134,7 +134,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const isAuthenticated = status === "authenticated";
   const { setTheme, setAccent } = useTheme();
 
-  const [config, setConfig] = useState<UserConfig>(defaultConfig as UserConfig);
+  const [config, setConfig] = useState<UserConfig>(loadConfig);
   const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
   const [serverLoaded, setServerLoaded] = useState(false);

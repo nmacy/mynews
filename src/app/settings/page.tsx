@@ -30,7 +30,7 @@ import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
 import { SystemStatusSection } from "@/components/settings/SystemStatusSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
-import { useSourceGroups } from "@/components/layout/SourceBar";
+import { useSourceGroups, sourceColor } from "@/components/layout/SourceBar";
 import { useTagDefinitions, useTagMap } from "@/components/TagProvider";
 import { SOURCE_LIBRARY, SOURCE_CATEGORIES } from "@/config/source-library";
 import {
@@ -99,6 +99,7 @@ function TagBarSection() {
   const { featuredTags, setFeaturedTags } = useConfig();
   const TAG_MAP = useTagMap();
   const TAG_DEFINITIONS = useTagDefinitions();
+  const [tagSearch, setTagSearch] = useState("");
 
   const isCustomized =
     featuredTags.length !== DEFAULT_FEATURED_TAGS.length ||
@@ -118,6 +119,9 @@ function TagBarSection() {
     .map((slug) => TAG_MAP.get(slug))
     .filter(Boolean);
   const unselectedTags = TAG_DEFINITIONS.filter((t) => !featuredSet.has(t.slug));
+  const filteredUnselected = tagSearch
+    ? unselectedTags.filter((t) => t.label.toLowerCase().includes(tagSearch.toLowerCase()))
+    : unselectedTags;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -185,11 +189,28 @@ function TagBarSection() {
 
       {unselectedTags.length > 0 && (
         <>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
-            Available
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--mn-muted)" }}>
+              Available
+            </p>
+            <input
+              type="text"
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.target.value)}
+              placeholder="Search tags..."
+              className="flex-1 max-w-[200px] px-2.5 py-1 text-sm rounded-md outline-none"
+              style={{
+                backgroundColor: "var(--mn-bg)",
+                color: "var(--mn-fg)",
+                border: "1px solid var(--mn-border)",
+              }}
+            />
+          </div>
           <div className="flex flex-wrap gap-2">
-            {unselectedTags.map((tag) => (
+            {filteredUnselected.length === 0 && (
+              <p className="text-sm" style={{ color: "var(--mn-muted)" }}>No tags found</p>
+            )}
+            {filteredUnselected.map((tag) => (
               <button
                 key={tag.slug}
                 onClick={() => addTag(tag.slug)}
@@ -231,7 +252,7 @@ function SortableSourceGroup({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    backgroundColor: "var(--mn-accent)",
+    backgroundColor: sourceColor(name),
     color: "white",
     opacity: isDragging ? 0.5 : 1,
     cursor: "grab",
@@ -254,12 +275,16 @@ function SortableSourceGroup({
 function SourceBarSection() {
   const { sourceBarOrder, setSourceBarOrder } = useConfig();
   const groups = useSourceGroups();
+  const [sourceSearch, setSourceSearch] = useState("");
 
   const allGroupNames = groups.map((g) => g.name);
   // If no custom order, treat all as "available" (natural order)
   const isCustomized = sourceBarOrder.length > 0;
   const orderedSet = new Set(sourceBarOrder);
   const unordered = allGroupNames.filter((n) => !orderedSet.has(n));
+  const filteredUnordered = sourceSearch
+    ? unordered.filter((n) => n.toLowerCase().includes(sourceSearch.toLowerCase()))
+    : unordered;
 
   const removeGroup = (name: string) => {
     setSourceBarOrder(sourceBarOrder.filter((n) => n !== name));
@@ -336,11 +361,28 @@ function SourceBarSection() {
 
       {unordered.length > 0 && (
         <>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--mn-muted)" }}>
-            {isCustomized ? "Remaining (appear after ordered)" : "All sources (click to pin order)"}
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--mn-muted)" }}>
+              {isCustomized ? "Remaining" : "All sources"}
+            </p>
+            <input
+              type="text"
+              value={sourceSearch}
+              onChange={(e) => setSourceSearch(e.target.value)}
+              placeholder="Search sources..."
+              className="flex-1 max-w-[200px] px-2.5 py-1 text-sm rounded-md outline-none"
+              style={{
+                backgroundColor: "var(--mn-bg)",
+                color: "var(--mn-fg)",
+                border: "1px solid var(--mn-border)",
+              }}
+            />
+          </div>
           <div className="flex flex-wrap gap-2">
-            {unordered.map((name) => (
+            {filteredUnordered.length === 0 && (
+              <p className="text-sm" style={{ color: "var(--mn-muted)" }}>No sources found</p>
+            )}
+            {filteredUnordered.map((name) => (
               <button
                 key={name}
                 onClick={() => addGroup(name)}

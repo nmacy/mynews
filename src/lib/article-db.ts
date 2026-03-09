@@ -27,7 +27,7 @@ export async function persistArticles(articles: Article[]): Promise<void> {
     const values: unknown[] = [];
 
     for (const a of batch) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       values.push(
         a.id,
         a.url,
@@ -43,6 +43,7 @@ export async function persistArticles(articles: Article[]): Promise<void> {
         a.priority ?? 2,
         a.paywalled ? 1 : 0,
         a._aiTagged ? 1 : 0,
+        a._hasTimestamp !== false ? 1 : 0,
         now.toISOString(),  // firstSeen
         now.toISOString(),  // lastSeen
         exp.toISOString(),  // expiresAt
@@ -50,11 +51,13 @@ export async function persistArticles(articles: Article[]): Promise<void> {
     }
 
     const sql = `
-      INSERT INTO Article (id, url, title, description, content, imageUrl, publishedAt, sourceId, sourceName, categories, tags, priority, paywalled, aiTagged, firstSeen, lastSeen, expiresAt)
+      INSERT INTO Article (id, url, title, description, content, imageUrl, publishedAt, sourceId, sourceName, categories, tags, priority, paywalled, aiTagged, hasTimestamp, firstSeen, lastSeen, expiresAt)
       VALUES ${placeholders.join(", ")}
       ON CONFLICT(url) DO UPDATE SET
         lastSeen = excluded.lastSeen,
         expiresAt = excluded.expiresAt,
+        publishedAt = CASE WHEN excluded.hasTimestamp = 1 THEN excluded.publishedAt ELSE Article.publishedAt END,
+        hasTimestamp = CASE WHEN excluded.hasTimestamp = 1 THEN 1 ELSE Article.hasTimestamp END,
         tags = CASE WHEN LENGTH(excluded.tags) > 4 THEN excluded.tags ELSE Article.tags END,
         imageUrl = CASE WHEN excluded.imageUrl IS NOT NULL THEN excluded.imageUrl ELSE Article.imageUrl END,
         aiTagged = CASE WHEN excluded.aiTagged = 1 THEN 1 ELSE Article.aiTagged END
@@ -93,6 +96,7 @@ export async function loadPersistedArticles(sourceIds: string[]): Promise<Articl
     priority: r.priority,
     paywalled: r.paywalled,
     _aiTagged: r.aiTagged || undefined,
+    _hasTimestamp: r.hasTimestamp,
   }));
 }
 

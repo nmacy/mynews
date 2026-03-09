@@ -16,7 +16,7 @@ let lastCleanup = Date.now();
 
 function cleanup() {
   const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS && windows.size < 10_000) return;
   lastCleanup = now;
   for (const [key, entry] of windows) {
     const cutoff = now - entry.windowMs;

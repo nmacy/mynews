@@ -21,7 +21,9 @@ export async function getCachedExtraction(url: string): Promise<CachedArticle | 
   if (!row) return null;
 
   if (row.expiresAt < new Date()) {
-    await prisma.cachedExtraction.delete({ where: { url } }).catch(() => {});
+    await prisma.cachedExtraction.delete({ where: { url } }).catch((err) => {
+      console.warn("[extraction-cache] Failed to delete expired entry:", err);
+    });
     return null;
   }
 
@@ -76,32 +78,28 @@ export async function getCacheStats(): Promise<{
   oldestEntry: string | null;
   newestEntry: string | null;
 }> {
-  const count = await prisma.cachedExtraction.count();
+  const result = await prisma.$queryRaw<
+    [{ cnt: bigint; total_bytes: bigint; oldest: string | null; newest: string | null }]
+  >`
+    SELECT
+      COUNT(*) as cnt,
+      COALESCE(SUM(LENGTH(content)), 0) as total_bytes,
+      MIN(createdAt) as oldest,
+      MAX(createdAt) as newest
+    FROM CachedExtraction
+  `;
 
+  const row = result[0];
+  const count = Number(row.cnt);
   if (count === 0) {
     return { count: 0, totalSizeKb: 0, oldestEntry: null, newestEntry: null };
   }
 
-  const sizeResult = await prisma.$queryRaw<[{ total_bytes: bigint }]>`
-    SELECT COALESCE(SUM(LENGTH(content)), 0) as total_bytes FROM CachedExtraction
-  `;
-  const totalSizeKb = Math.round(Number(sizeResult[0].total_bytes) / 1024);
-
-  const oldest = await prisma.cachedExtraction.findFirst({
-    orderBy: { createdAt: "asc" },
-    select: { createdAt: true },
-  });
-
-  const newest = await prisma.cachedExtraction.findFirst({
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
-  });
-
   return {
     count,
-    totalSizeKb,
-    oldestEntry: oldest?.createdAt.toISOString() ?? null,
-    newestEntry: newest?.createdAt.toISOString() ?? null,
+    totalSizeKb: Math.round(Number(row.total_bytes) / 1024),
+    oldestEntry: row.oldest ? new Date(row.oldest).toISOString() : null,
+    newestEntry: row.newest ? new Date(row.newest).toISOString() : null,
   };
 }
 

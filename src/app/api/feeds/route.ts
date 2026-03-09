@@ -14,6 +14,17 @@ import type { Article, Source, AiProvider } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+function isValidSource(s: unknown): s is Source {
+  if (!s || typeof s !== "object") return false;
+  const obj = s as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" && obj.id.length <= 200 &&
+    typeof obj.name === "string" && obj.name.length <= 200 &&
+    typeof obj.url === "string" && isSafeUrl(obj.url) &&
+    (obj.priority === undefined || typeof obj.priority === "number")
+  );
+}
+
 export async function GET(request: NextRequest) {
   const sourceIdsParam = request.nextUrl.searchParams.get("sourceIds");
   const sourcesParam = request.nextUrl.searchParams.get("sources");
@@ -24,8 +35,8 @@ export async function GET(request: NextRequest) {
   if (sourcesParam) {
     // Accept full source objects as JSON (for custom user-added sources)
     try {
-      const sources = JSON.parse(sourcesParam) as Source[];
-      const safeSources = sources.filter((s) => isSafeUrl(s.url));
+      const parsed = JSON.parse(sourcesParam) as unknown[];
+      const safeSources = (Array.isArray(parsed) ? parsed : []).filter(isValidSource);
       if (safeSources.length === 0) {
         return NextResponse.json({ error: "No valid source URLs" }, { status: 400 });
       }
@@ -63,8 +74,7 @@ export async function POST(request: NextRequest) {
     try {
       const body = await request.json();
       if (body.sources && Array.isArray(body.sources)) {
-        const sources = body.sources as Source[];
-        const safeSources = sources.filter((s) => isSafeUrl(s.url));
+        const safeSources = (body.sources as unknown[]).filter(isValidSource);
         if (safeSources.length === 0) {
           return NextResponse.json({ error: "No valid source URLs" }, { status: 400 });
         }

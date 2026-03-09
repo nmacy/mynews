@@ -108,7 +108,8 @@ async function fetchServerSettings(): Promise<{
     const res = await fetch("/api/user/settings");
     if (!res.ok) return null;
     return await res.json();
-  } catch {
+  } catch (err) {
+    console.warn("[ConfigProvider] fetchServerSettings failed:", err);
     return null;
   }
 }
@@ -120,8 +121,8 @@ async function saveServerSettings(data: Record<string, unknown>): Promise<void> 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-  } catch {
-    // silent fail — next save will retry
+  } catch (err) {
+    console.warn("[ConfigProvider] saveServerSettings failed:", err);
   }
 }
 

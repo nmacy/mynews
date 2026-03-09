@@ -65,7 +65,7 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
 
   const allTags = await getAllTagDefinitions();
   const tagList = allTags.map((t) => ({ slug: t.slug, label: t.label }));
-  const dbUpdates: { id: string; tags: string[] }[] = [];
+  const pendingMutations = new Map<string, string[]>();
 
   for (let i = 0; i < untagged.length; i += BATCH_SIZE) {
     const batch = untagged.slice(i, i + BATCH_SIZE);
@@ -89,9 +89,7 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
         const aiTags = tagMap[article.id];
         if (aiTags && aiTags.length > 0) {
           const merged = Array.from(new Set([...article.tags, ...aiTags]));
-          article.tags = merged;
-          article._aiTagged = true;
-          dbUpdates.push({ id: article.id, tags: merged });
+          pendingMutations.set(article.id, merged);
           tagged++;
         }
       }
@@ -102,17 +100,26 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
     }
   }
 
-  // Persist tag updates to DB
-  if (dbUpdates.length > 0) {
+  // Persist tag updates to DB first, then apply to in-memory articles
+  if (pendingMutations.size > 0) {
+    const dbUpdates = Array.from(pendingMutations, ([id, tags]) => ({ id, tags }));
     try {
       await updateArticleTags(dbUpdates);
+
+      // DB succeeded — now apply mutations to in-memory articles and update cache
+      for (const article of articles) {
+        const merged = pendingMutations.get(article.id);
+        if (merged) {
+          article.tags = merged;
+          article._aiTagged = true;
+        }
+      }
+      setCache("all-articles", articles);
     } catch (err) {
-      console.warn("[auto-tagger] DB persist failed:", err);
+      console.warn("[auto-tagger] DB persist failed, skipping in-memory update:", err);
     }
   }
 
-  // Update in-memory cache (articles array was mutated in place)
-  setCache("all-articles", articles);
   aiTaggingInProgress = false;
 }
 

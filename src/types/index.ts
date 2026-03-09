@@ -41,6 +41,8 @@ export interface Article {
   paywalled: boolean;
   /** Debug flag — true when tags came from AI, false/undefined for keyword tags */
   _aiTagged?: boolean;
+  /** Whether the source provided a real timestamp (false = we used pull time) */
+  _hasTimestamp?: boolean;
 }
 
 export type AiProvider = "anthropic" | "openai" | "gemini" | "openrouter";

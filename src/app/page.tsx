@@ -65,20 +65,29 @@ function HomeContent() {
       return;
     }
 
+    const controller = new AbortController();
     setLoading(true);
 
     fetch("/api/feeds", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sources: config.sources }),
+      signal: controller.signal,
     })
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles as Article[]);
         setFailedSources(data.failedSources ?? []);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error(err);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourcesKey]);
 

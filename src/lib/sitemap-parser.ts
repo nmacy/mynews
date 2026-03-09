@@ -50,9 +50,9 @@ export async function fetchSitemapSource(
     ).trim();
     if (!title) continue;
 
-    const pubDate =
-      urlEl.getElementsByTagName("news:publication_date")[0]?.textContent?.trim() ??
-      new Date().toISOString();
+    const rawPubDate = urlEl.getElementsByTagName("news:publication_date")[0]?.textContent?.trim();
+    const hasTimestamp = !!rawPubDate;
+    const pubDate = rawPubDate ?? new Date().toISOString();
 
     const imageUrl =
       urlEl.getElementsByTagName("image:loc")[0]?.textContent?.trim() ?? null;
@@ -72,6 +72,7 @@ export async function fetchSitemapSource(
       tags: assignTags({ title, description: desc }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
+      _hasTimestamp: hasTimestamp,
     });
   }
 

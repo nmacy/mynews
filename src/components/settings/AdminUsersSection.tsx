@@ -21,7 +21,7 @@ export function AdminUsersSection() {
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load users");
         const data = await res.json();
-        setUsers(data);
+        setUsers(data.users ?? data);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));

@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { getCachedWithStatus, setCache, isRefreshing, markRefreshing, unmarkRefreshing } from "./cache";
+import { getCached, getCachedWithStatus, setCache, isRefreshing, markRefreshing, unmarkRefreshing } from "./cache";
 import { generateArticleId, stripHtml, truncate, decodeHtmlEntities } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
@@ -331,8 +331,14 @@ export async function getSources(): Promise<Source[]> {
   return config.sources;
 }
 
+const ALL_SOURCES_CACHE_KEY = "all-sources-across-users";
+const ALL_SOURCES_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
 /** Get all sources across server defaults and every user's configured sources. */
 export async function getAllSourcesAcrossUsers(): Promise<Source[]> {
+  const cached = getCached<Source[]>(ALL_SOURCES_CACHE_KEY);
+  if (cached) return cached;
+
   const defaults = await getSources();
   const sourceMap = new Map<string, Source>();
   for (const s of defaults) sourceMap.set(s.id, s);
@@ -353,7 +359,9 @@ export async function getAllSourcesAcrossUsers(): Promise<Source[]> {
     // fall back to defaults only
   }
 
-  return Array.from(sourceMap.values());
+  const result = Array.from(sourceMap.values());
+  setCache(ALL_SOURCES_CACHE_KEY, result, ALL_SOURCES_TTL_MS);
+  return result;
 }
 
 /**

@@ -49,8 +49,12 @@ export async function POST(request: Request) {
     );
   }
 
-  if (email && (typeof email !== "string" || !email.includes("@"))) {
+  if (email && (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+  }
+
+  if (name && (typeof name !== "string" || name.length > 100)) {
+    return NextResponse.json({ error: "Name must be 100 characters or fewer" }, { status: 400 });
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);

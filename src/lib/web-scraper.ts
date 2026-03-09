@@ -108,19 +108,19 @@ function extractTitle(link: Element, container: Element): string {
   return linkText;
 }
 
-function extractDate(container: Element): string {
+function extractDate(container: Element): { date: string; hasTimestamp: boolean } {
   // Try <time> element first
   const timeEl = container.querySelector("time");
   if (timeEl) {
     const datetime = timeEl.getAttribute("datetime");
     if (datetime) {
       const parsed = new Date(datetime);
-      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+      if (!isNaN(parsed.getTime())) return { date: parsed.toISOString(), hasTimestamp: true };
     }
     const timeText = (timeEl.textContent ?? "").trim();
     if (timeText) {
       const parsed = new Date(timeText);
-      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+      if (!isNaN(parsed.getTime())) return { date: parsed.toISOString(), hasTimestamp: true };
     }
   }
 
@@ -129,10 +129,10 @@ function extractDate(container: Element): string {
   const match = text.match(DATE_REGEX);
   if (match) {
     const parsed = new Date(match[0]);
-    if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    if (!isNaN(parsed.getTime())) return { date: parsed.toISOString(), hasTimestamp: true };
   }
 
-  return new Date().toISOString();
+  return { date: new Date().toISOString(), hasTimestamp: false };
 }
 
 function extractImage(
@@ -166,6 +166,7 @@ interface ScrapedLink {
   url: string;
   title: string;
   date: string;
+  hasTimestamp: boolean;
   imageUrl: string | null;
   description: string;
 }
@@ -220,10 +221,12 @@ function scrapeLinks(html: string, baseUrl: string): ScrapedLink[] {
     seen.add(cleanUrl);
 
     const container = findContainer(anchor);
+    const { date, hasTimestamp } = extractDate(container);
     results.push({
       url: cleanUrl,
       title: extractTitle(anchor, container),
-      date: extractDate(container),
+      date,
+      hasTimestamp,
       imageUrl: extractImage(container, baseUrl),
       description: extractDescription(container),
     });
@@ -284,6 +287,7 @@ export async function fetchWebSource(
       tags: assignTags({ title, description }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
+      _hasTimestamp: link.hasTimestamp,
     };
   });
 }

@@ -48,7 +48,9 @@ export function TagProvider({ children }: { children: React.ReactNode }) {
           }));
         setCustomTags(custom);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("[TagProvider] Failed to fetch custom tags:", err);
+      });
   }, []);
 
   useEffect(() => {

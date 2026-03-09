@@ -280,10 +280,12 @@ async function tryDomStrategies(url: string): Promise<ExtractionResult | null> {
   const html = await res.text();
   const candidates: ExtractionResult[] = [];
 
+  // Parse HTML once — reuse for CSS selectors (Readability mutates DOM, so it needs its own)
+  const sharedDom = new JSDOM(html, { url });
+
   // Strategy A: CSS selector extraction (merges all matching elements)
   try {
-    const dom = new JSDOM(html, { url });
-    const doc = dom.window.document;
+    const doc = sharedDom.window.document;
 
     for (const selector of CONTENT_SELECTORS) {
       const containers = doc.querySelectorAll(selector);
@@ -311,7 +313,7 @@ async function tryDomStrategies(url: string): Promise<ExtractionResult | null> {
     // selector extraction failed
   }
 
-  // Strategy B: Mozilla Readability
+  // Strategy B: Mozilla Readability (needs its own DOM since it mutates)
   try {
     const dom = new JSDOM(html, { url });
     const reader = new Readability(dom.window.document);
@@ -469,8 +471,14 @@ export async function GET(request: NextRequest) {
 
     // Run extractus and DOM strategies in parallel, pick the best
     const [extractResult, domResult] = await Promise.all([
-      tryExtractus(url).catch(() => null),
-      tryDomStrategies(url).catch(() => null),
+      tryExtractus(url).catch((err) => {
+        console.warn("[extract] extractus failed:", (err as Error)?.message);
+        return null;
+      }),
+      tryDomStrategies(url).catch((err) => {
+        console.warn("[extract] DOM strategies failed:", (err as Error)?.message);
+        return null;
+      }),
     ]);
 
     // Collect all successful results and pick the longest content
@@ -501,7 +509,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fallback 1: Google AMP cache
-    const ampResult = await tryAmpCache(url).catch(() => null);
+    const ampResult = await tryAmpCache(url).catch((err) => {
+      console.warn("[extract] AMP cache failed:", (err as Error)?.message);
+      return null;
+    });
     if (ampResult) {
       const cleaned = cleanExtractedHtml(ampResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
@@ -512,7 +523,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fallback 2: Jina Reader API (handles JS-rendered pages)
-    const jinaResult = await tryJinaReader(url).catch(() => null);
+    const jinaResult = await tryJinaReader(url).catch((err) => {
+      console.warn("[extract] Jina Reader failed:", (err as Error)?.message);
+      return null;
+    });
     if (jinaResult) {
       const cleaned = cleanExtractedHtml(jinaResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
@@ -523,7 +537,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fallback 3: Wayback Machine (for sites that block server-side requests)
-    const waybackResult = await tryWaybackMachine(url).catch(() => null);
+    const waybackResult = await tryWaybackMachine(url).catch((err) => {
+      console.warn("[extract] Wayback Machine failed:", (err as Error)?.message);
+      return null;
+    });
     if (waybackResult) {
       const cleaned = cleanExtractedHtml(waybackResult.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {

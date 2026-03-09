@@ -112,6 +112,7 @@ model Article {
   priority    Int      @default(2)
   paywalled   Boolean  @default(false)
   aiTagged    Boolean  @default(false)
+  hasTimestamp Boolean  @default(true)
   firstSeen   DateTime @default(now())
   lastSeen    DateTime @default(now())
   expiresAt   DateTime
@@ -119,4 +120,5 @@ model Article {
   @@index([sourceId])
   @@index([publishedAt])
   @@index([expiresAt])
+  @@index([aiTagged])
 }

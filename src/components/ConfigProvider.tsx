@@ -199,7 +199,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // When authenticated, load from server — but respect localStorage as local truth
+  // When authenticated, load from server — server is always the source of truth
   useEffect(() => {
     if (!isAuthenticated || serverLoaded) return;
 
@@ -208,30 +208,28 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         // Don't overwrite if the user changed something while session was loading
         if (!dirtyRef.current) {
           const serverHasSources = data.sources && data.sources.length > 0;
-          const local = configRef.current;
-          const localHasSources = hadLocalStorageRef.current && local.sources.length > 0;
 
-          if (localHasSources && serverHasSources && local.sources.length !== data.sources.length) {
-            // localStorage differs from server — localStorage is more recent on this device.
-            // Push localStorage to server to sync, don't overwrite local config.
-            saveServerSettings({
-              sources: local.sources,
-              featuredTags: local.featuredTags ?? [],
-              sourceBarOrder: local.sourceBarOrder ?? [],
-              disabledSourceIds: [...disabledRef.current],
-            });
-          } else if (localHasSources && !serverHasSources) {
-            // Server has no sources but localStorage does — sync to server
-            saveServerSettings({
-              sources: local.sources,
-              featuredTags: local.featuredTags ?? [],
-              sourceBarOrder: local.sourceBarOrder ?? [],
-              disabledSourceIds: [...disabledRef.current],
-            });
-          } else if (serverHasSources) {
-            // No localStorage (new device) or counts match — use server data
-            setConfig({ sources: data.sources, featuredTags: data.featuredTags, sourceBarOrder: data.sourceBarOrder });
+          if (serverHasSources) {
+            // Server is the source of truth — always apply server data
+            const serverConfig: UserConfig = {
+              sources: data.sources,
+              featuredTags: data.featuredTags,
+              sourceBarOrder: data.sourceBarOrder,
+            };
+            setConfig(serverConfig);
             setDisabledSources(new Set(data.disabledSourceIds));
+            // Sync localStorage to match server
+            saveConfigLocal(serverConfig);
+            saveDisabledLocal(new Set(data.disabledSourceIds));
+          } else if (hadLocalStorageRef.current && configRef.current.sources.length > 0) {
+            // New user with no server data but has localStorage — seed server from local
+            const local = configRef.current;
+            saveServerSettings({
+              sources: local.sources,
+              featuredTags: local.featuredTags ?? [],
+              sourceBarOrder: local.sourceBarOrder ?? [],
+              disabledSourceIds: [...disabledRef.current],
+            });
           } else if (adminDefaultsRef.current) {
             // New user with no saved sources anywhere → apply admin defaults
             setConfig({ sources: adminDefaultsRef.current });

@@ -11,7 +11,7 @@ function safeJsonParse<T>(json: string, fallback: T): T {
 }
 
 const VALID_THEMES = new Set(["light", "dark", "system"]);
-const VALID_ACCENTS = new Set(["blue", "purple", "green", "orange", "red", "pink"]);
+const VALID_ACCENTS = new Set(["blue", "indigo", "purple", "violet", "green", "teal", "cyan", "orange", "amber", "red", "pink", "rose", "slate", "brown", "mint"]);
 const MAX_SOURCES = 200;
 const MAX_TAGS = 100;
 

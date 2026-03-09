@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
 import { getCachedWithStatus, setCache, isRefreshing, markRefreshing, unmarkRefreshing } from "./cache";
-import { generateArticleId, stripHtml, truncate } from "./articles";
+import { generateArticleId, stripHtml, truncate, decodeHtmlEntities } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
 import { getCustomTags } from "./custom-tags";
@@ -112,8 +112,9 @@ export async function fetchSource(
         item.contentSnippet ?? item.content ?? item.summary ?? ""
       );
 
-      const title = item.title.trim();
+      const title = decodeHtmlEntities(item.title.trim());
       const desc = truncate(description, 300);
+      const hasTimestamp = !!(item.isoDate || item.pubDate);
 
       articles.push({
         id: generateArticleId(link),
@@ -128,12 +129,22 @@ export async function fetchSource(
         tags: assignTags({ title, description: desc }, extraTags),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
+        _hasTimestamp: hasTimestamp,
       });
+    }
+
+    // Log timestamp analysis per source
+    const withTs = articles.filter((a) => a._hasTimestamp).length;
+    if (withTs < articles.length) {
+      console.log(
+        `[feeds] ${source.name}: ${withTs}/${articles.length} items have real timestamps (${articles.length - withTs} using pull time)`
+      );
     }
 
     return articles;
   } catch (rssError) {
-    // RSS parsing failed — try sitemap, then web scraping as fallback
+    // RSS parsing failed — try sitemap as fallback (but NOT web scraping,
+    // which produces phantom articles from inline content links)
     try {
       const articles = await fetchSitemapSource(source, extraTags);
       if (articles.length > 0) {
@@ -141,17 +152,7 @@ export async function fetchSource(
         return articles;
       }
     } catch {
-      // sitemap also failed, continue to web scraping
-    }
-
-    try {
-      const articles = await fetchWebSource(source, extraTags);
-      if (articles.length > 0) {
-        console.log(`[feeds] ${source.name}: RSS failed, web scraping fallback succeeded (${articles.length} articles)`);
-        return articles;
-      }
-    } catch {
-      // web scraping also failed
+      // sitemap also failed
     }
 
     console.error(`Failed to fetch ${source.name} (${source.url}):`, rssError);
@@ -242,6 +243,19 @@ async function refreshArticles(
   try {
     const sourceIds = sources.map((s) => s.id);
     const persisted = await loadPersistedArticles(sourceIds);
+
+    // For articles without real timestamps, use stable DB publishedAt
+    // instead of fresh new Date() from this refresh cycle
+    const dbMap = new Map(persisted.map((a) => [a.url, a]));
+    for (const article of unique) {
+      if (article._hasTimestamp === false) {
+        const dbArticle = dbMap.get(article.url);
+        if (dbArticle) {
+          article.publishedAt = dbArticle.publishedAt;
+        }
+      }
+    }
+
     const rssUrls = new Set(unique.map((a) => a.url));
     const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
     final = [...unique, ...dbOnly];
@@ -249,10 +263,15 @@ async function refreshArticles(
     console.warn("[article-db] DB load failed, using RSS-only results:", err);
   }
 
-  // Sort by date, most recent first
-  final.sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-  );
+  // Sort by date, most recent first.
+  // Articles without real timestamps sort after those with real timestamps
+  // to prevent them from jumping to the top on every refresh.
+  final.sort((a, b) => {
+    const aHasTs = a._hasTimestamp !== false;
+    const bHasTs = b._hasTimestamp !== false;
+    if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  });
 
   setCache(cacheKey, final);
   fillOgImagesInBackground(final, cacheKey);

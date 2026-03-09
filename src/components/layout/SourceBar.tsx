@@ -1,12 +1,40 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
 
 export interface SourceGroup {
   name: string;
   ids: string[];
+}
+
+const SOURCE_COLORS = [
+  "#E53E3E", // red
+  "#DD6B20", // orange
+  "#D69E2E", // yellow
+  "#38A169", // green
+  "#319795", // teal
+  "#3182CE", // blue
+  "#5A67D8", // indigo
+  "#805AD5", // purple
+  "#D53F8C", // pink
+  "#2B6CB0", // dark blue
+  "#276749", // dark green
+  "#9B2C2C", // dark red
+  "#744210", // brown
+  "#285E61", // dark teal
+  "#553C9A", // dark purple
+  "#97266D", // dark pink
+];
+
+/** Stable color per source name using simple string hash */
+export function sourceColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  }
+  return SOURCE_COLORS[Math.abs(hash) % SOURCE_COLORS.length];
 }
 
 /** Group enabled sources by name, ordered by sourceBarOrder then natural appearance order */
@@ -44,15 +72,59 @@ export function SourceBar() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { sourceBarOrder, setSourceBarOrder } = useConfig();
   const groups = useSourceGroups();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const moreRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Only show on article-listing pages
-  if (pathname !== "/" && !pathname.startsWith("/tag/")) return null;
-  if (groups.length === 0) return null;
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    if (moreOpen && searchRef.current) {
+      searchRef.current.focus();
+    }
+  }, [moreOpen]);
 
   const sourcesParam = searchParams.get("sources") || "";
   const activeIds = sourcesParam ? sourcesParam.split(",").filter(Boolean) : [];
   const activeSet = new Set(activeIds);
+
+  // Split into featured (inline) vs overflow groups
+  const hasCustomOrder = sourceBarOrder.length > 0;
+  const featuredSet = new Set(sourceBarOrder);
+  const featuredGroups = hasCustomOrder
+    ? groups.filter((g) => featuredSet.has(g.name))
+    : groups;
+  const overflowGroups = hasCustomOrder
+    ? groups.filter((g) => !featuredSet.has(g.name))
+    : [];
+
+  // Check if the active source is in the overflow
+  const activeOverflowGroup = overflowGroups.find((g) =>
+    g.ids.every((id) => activeSet.has(id)) && activeIds.length === g.ids.length
+  );
+
+  const filteredOverflow = useMemo(() => {
+    if (!search) return overflowGroups;
+    const q = search.toLowerCase();
+    return overflowGroups.filter((g) => g.name.toLowerCase().includes(q));
+  }, [overflowGroups, search]);
+
+  // Only show on article-listing pages
+  if (pathname !== "/" && !pathname.startsWith("/tag/")) return null;
+  if (groups.length === 0) return null;
 
   const updateSources = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -62,8 +134,10 @@ export function SourceBar() {
       params.delete("sources");
     }
     params.delete("source");
+    // When selecting a source, navigate to home so the tag bar reverts to "All"
+    const basePath = nextIds.length > 0 ? "/" : pathname;
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.push(qs ? `${basePath}?${qs}` : basePath);
   };
 
   const toggleGroup = (group: SourceGroup) => {
@@ -84,6 +158,25 @@ export function SourceBar() {
 
   const isAllActive = activeIds.length === 0;
 
+  const PinIcon = ({ filled }: { filled: boolean }) => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+    </svg>
+  );
+
+  const togglePin = (groupName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!hasCustomOrder) {
+      // Initialize order with all names except the one being unpinned
+      setSourceBarOrder(groups.map((g) => g.name).filter((n) => n !== groupName));
+    } else if (featuredSet.has(groupName)) {
+      setSourceBarOrder(sourceBarOrder.filter((n) => n !== groupName));
+    } else {
+      setSourceBarOrder([...sourceBarOrder, groupName]);
+    }
+  };
+
   return (
     <nav style={{ backgroundColor: "var(--mn-card)", borderBottom: "1px solid var(--mn-border)" }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -101,24 +194,123 @@ export function SourceBar() {
               All
             </button>
 
-            {groups.map((group) => {
-              const isActive = group.ids.every((id) => activeSet.has(id));
+            {featuredGroups.map((group) => {
+              const isActive = group.ids.every((id) => activeSet.has(id)) && activeIds.length === group.ids.length;
+              const color = sourceColor(group.name);
               return (
                 <button
                   key={group.name}
                   onClick={() => toggleGroup(group)}
-                  className="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-full transition-colors"
+                  className="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-full transition-colors flex items-center gap-1"
                   style={
                     isActive
-                      ? { backgroundColor: "var(--mn-accent)", color: "white" }
+                      ? { backgroundColor: color, color: "white" }
                       : { color: "var(--mn-muted)" }
                   }
                 >
                   {group.name}
+                  {isActive && (
+                    <span
+                      onClick={(e) => togglePin(group.name, e)}
+                      title="Unpin from bar"
+                      className="ml-0.5 opacity-70 hover:opacity-100 transition-opacity"
+                    >
+                      <PinIcon filled />
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+
+          {/* More dropdown — outside the overflow container */}
+          {overflowGroups.length > 0 && (
+            <div className="relative flex-shrink-0" ref={moreRef}>
+              <button
+                onClick={() => setMoreOpen((v) => !v)}
+                className="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-full transition-colors"
+                style={{
+                  color: activeOverflowGroup ? "white" : "var(--mn-muted)",
+                  backgroundColor: activeOverflowGroup ? sourceColor(activeOverflowGroup.name) : "transparent",
+                }}
+              >
+                {activeOverflowGroup ? activeOverflowGroup.name : "More"}
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className={`transition-transform ${moreOpen ? "rotate-180" : ""}`}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {moreOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-lg max-h-80 overflow-hidden min-w-[200px] flex flex-col"
+                  style={{
+                    backgroundColor: "var(--mn-card)",
+                    border: "1px solid var(--mn-border)",
+                  }}
+                >
+                  <div className="px-2 pt-2 pb-1">
+                    <input
+                      ref={searchRef}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search sources..."
+                      className="w-full px-2.5 py-1.5 text-sm rounded-md outline-none"
+                      style={{
+                        backgroundColor: "var(--mn-bg)",
+                        color: "var(--mn-fg)",
+                        border: "1px solid var(--mn-border)",
+                      }}
+                    />
+                  </div>
+                  <div className="overflow-y-auto py-1">
+                    {filteredOverflow.length === 0 && (
+                      <div className="px-3 py-2 text-sm" style={{ color: "var(--mn-muted)" }}>
+                        No sources found
+                      </div>
+                    )}
+                    {filteredOverflow.map((group) => {
+                      const isActive = group.ids.every((id) => activeSet.has(id)) && activeIds.length === group.ids.length;
+                      const color = sourceColor(group.name);
+                      return (
+                        <button
+                          key={group.name}
+                          onClick={() => { toggleGroup(group); setMoreOpen(false); setSearch(""); }}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:opacity-80 transition-opacity w-full text-left"
+                          style={{
+                            color: isActive ? "white" : "var(--mn-fg)",
+                            backgroundColor: isActive ? color : "transparent",
+                          }}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="flex-1">{group.name}</span>
+                          {isActive && (
+                            <span
+                              onClick={(e) => { togglePin(group.name, e); setMoreOpen(false); setSearch(""); }}
+                              title="Pin to bar"
+                              className="opacity-70 hover:opacity-100 transition-opacity"
+                            >
+                              <PinIcon filled={false} />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </nav>

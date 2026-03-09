@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllArticles, getArticlesForSources, getSources, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY } from "@/lib/feeds";
+import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
 import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
@@ -91,27 +91,7 @@ export async function POST(request: NextRequest) {
   clearCache();
 
   // Gather ALL sources in use: server defaults + every user's configured sources
-  const defaultSources = await getSources();
-  const sourceMap = new Map<string, Source>();
-  for (const s of defaultSources) sourceMap.set(s.id, s);
-
-  try {
-    const allUserSettings = await prisma.userSettings.findMany({
-      select: { sources: true },
-    });
-    for (const row of allUserSettings) {
-      try {
-        const userSources = JSON.parse(row.sources) as Source[];
-        for (const s of userSources) {
-          if (s.id && s.url && !sourceMap.has(s.id)) sourceMap.set(s.id, s);
-        }
-      } catch { /* skip malformed */ }
-    }
-  } catch (err) {
-    console.warn("[rescan] Failed to load user sources, using defaults only:", err);
-  }
-
-  const sources = Array.from(sourceMap.values());
+  const sources = await getAllSourcesAcrossUsers();
   const total = sources.length;
 
   const stream = new ReadableStream({

@@ -297,7 +297,7 @@ export async function getAllArticles(): Promise<Article[]> {
     return status.data;
   }
 
-  const sources = await getSources();
+  const sources = await getAllSourcesAcrossUsers();
 
   if (status && status.stale) {
     // Stale cache — return stale data, trigger background refresh if not already running
@@ -329,6 +329,31 @@ export async function getSources(): Promise<Source[]> {
     // fall through to static defaults
   }
   return config.sources;
+}
+
+/** Get all sources across server defaults and every user's configured sources. */
+export async function getAllSourcesAcrossUsers(): Promise<Source[]> {
+  const defaults = await getSources();
+  const sourceMap = new Map<string, Source>();
+  for (const s of defaults) sourceMap.set(s.id, s);
+
+  try {
+    const allUserSettings = await prisma.userSettings.findMany({
+      select: { sources: true },
+    });
+    for (const row of allUserSettings) {
+      try {
+        const userSources = JSON.parse(row.sources) as Source[];
+        for (const s of userSources) {
+          if (s.id && s.url && !sourceMap.has(s.id)) sourceMap.set(s.id, s);
+        }
+      } catch { /* skip malformed */ }
+    }
+  } catch {
+    // fall back to defaults only
+  }
+
+  return Array.from(sourceMap.values());
 }
 
 /**

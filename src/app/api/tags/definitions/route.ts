@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { TAG_DEFINITIONS } from "@/config/tags";
 import { getCustomTags } from "@/lib/custom-tags";
 
+export const revalidate = 300; // revalidate every 5 minutes
+
 export async function GET() {
   const customTags = await getCustomTags();
 

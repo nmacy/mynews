@@ -102,6 +102,25 @@ export async function loadPersistedArticles(sourceIds: string[]): Promise<Articl
 }
 
 /**
+ * Batch-update imageUrl for articles by URL.
+ * Used to persist OG images discovered in background.
+ */
+export async function updateArticleImages(
+  updates: { url: string; imageUrl: string }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+
+  await prisma.$transaction(
+    updates.map((u) =>
+      prisma.article.update({
+        where: { url: u.url },
+        data: { imageUrl: u.imageUrl },
+      })
+    )
+  );
+}
+
+/**
  * Update only tags and aiTagged for specific articles by ID.
  * More efficient than persistArticles() which does a full upsert.
  */

@@ -4,7 +4,7 @@ import { generateArticleId, stripHtml, truncate, decodeHtmlEntities } from "./ar
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
 import { getCustomTags } from "./custom-tags";
-import { persistArticles, loadPersistedArticles, pruneExpiredArticles } from "./article-db";
+import { persistArticles, loadPersistedArticles, pruneExpiredArticles, updateArticleImages } from "./article-db";
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
@@ -184,6 +184,11 @@ function fillOgImagesInBackground(articles: Article[], cacheKey: string): void {
     }
     // Update cache with images filled in (articles array was mutated)
     setCache(cacheKey, articles);
+    // Persist newly-found OG images to DB so they survive cache eviction
+    const withNewImages = needImages.filter((a) => a.imageUrl);
+    if (withNewImages.length > 0) {
+      updateArticleImages(withNewImages.map((a) => ({ url: a.url, imageUrl: a.imageUrl! }))).catch(() => {});
+    }
     ogFillInFlight.delete(cacheKey);
   })().catch(() => {
     ogFillInFlight.delete(cacheKey);
@@ -253,15 +258,23 @@ async function refreshArticles(
     const sourceIds = sources.map((s) => s.id);
     const persisted = await loadPersistedArticles(sourceIds);
 
-    // For articles without real timestamps, use stable DB publishedAt
-    // instead of fresh new Date() from this refresh cycle
+    // Carry over stable DB fields to fresh RSS articles:
+    // - publishedAt for articles without real timestamps
+    // - _aiTagged so already-tagged articles aren't re-tagged
+    // - imageUrl if RSS didn't have one but DB does (from OG fill)
     const dbMap = new Map(persisted.map((a) => [a.url, a]));
     for (const article of unique) {
+      const dbArticle = dbMap.get(article.url);
+      if (!dbArticle) continue;
       if (article._hasTimestamp === false) {
-        const dbArticle = dbMap.get(article.url);
-        if (dbArticle) {
-          article.publishedAt = dbArticle.publishedAt;
-        }
+        article.publishedAt = dbArticle.publishedAt;
+      }
+      if (dbArticle._aiTagged) {
+        article._aiTagged = true;
+        article.tags = dbArticle.tags;
+      }
+      if (!article.imageUrl && dbArticle.imageUrl) {
+        article.imageUrl = dbArticle.imageUrl;
       }
     }
 
@@ -357,11 +370,33 @@ export async function getSources(): Promise<Source[]> {
 const ALL_SOURCES_CACHE_KEY = "all-sources-across-users";
 const ALL_SOURCES_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
+const PERSISTED_SOURCES_KEY = "allSourcesAcrossUsers";
+
 /** Get all sources across server defaults and every user's configured sources. */
 export async function getAllSourcesAcrossUsers(): Promise<Source[]> {
   const cached = getCached<Source[]>(ALL_SOURCES_CACHE_KEY);
   if (cached) return cached;
 
+  // On cold start, try loading last-known sources from DB (single row, fast)
+  try {
+    const row = await prisma.serverConfig.findUnique({ where: { key: PERSISTED_SOURCES_KEY } });
+    if (row) {
+      const persisted = JSON.parse(row.value) as Source[];
+      if (persisted.length > 0) {
+        setCache(ALL_SOURCES_CACHE_KEY, persisted, ALL_SOURCES_TTL_MS);
+        // Refresh in background so it's up-to-date for next call
+        computeAllSources().catch(() => {});
+        return persisted;
+      }
+    }
+  } catch {
+    // fall through to full computation
+  }
+
+  return computeAllSources();
+}
+
+async function computeAllSources(): Promise<Source[]> {
   const defaults = await getSources();
   const sourceMap = new Map<string, Source>();
   for (const s of defaults) sourceMap.set(s.id, s);
@@ -384,6 +419,14 @@ export async function getAllSourcesAcrossUsers(): Promise<Source[]> {
 
   const result = Array.from(sourceMap.values());
   setCache(ALL_SOURCES_CACHE_KEY, result, ALL_SOURCES_TTL_MS);
+
+  // Persist to DB for fast cold-start recovery
+  prisma.serverConfig.upsert({
+    where: { key: PERSISTED_SOURCES_KEY },
+    update: { value: JSON.stringify(result) },
+    create: { key: PERSISTED_SOURCES_KEY, value: JSON.stringify(result) },
+  }).catch(() => {});
+
   return result;
 }
 

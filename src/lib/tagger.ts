@@ -27,6 +27,24 @@ function compileDefs(defs: TagDefinition[]): CompiledTag[] {
 
 const staticCompiledTags: CompiledTag[] = compileDefs(TAG_DEFINITIONS);
 
+// Memoize compiled extra tags by a key derived from their slugs
+const extraTagsCache = new Map<string, CompiledTag[]>();
+
+function getCompiledExtraTags(extraTags: TagDefinition[]): CompiledTag[] {
+  const key = extraTags.map((t) => t.slug).sort().join(",");
+  let cached = extraTagsCache.get(key);
+  if (!cached) {
+    cached = compileDefs(extraTags);
+    extraTagsCache.set(key, cached);
+    // Bound cache size
+    if (extraTagsCache.size > 50) {
+      const first = extraTagsCache.keys().next().value;
+      if (first !== undefined) extraTagsCache.delete(first);
+    }
+  }
+  return cached;
+}
+
 export function assignTags(
   article: { title: string; description: string },
   extraTags?: TagDefinition[],
@@ -35,7 +53,7 @@ export function assignTags(
   const matched = new Set<string>();
 
   const compiled = extraTags && extraTags.length > 0
-    ? [...staticCompiledTags, ...compileDefs(extraTags)]
+    ? [...staticCompiledTags, ...getCompiledExtraTags(extraTags)]
     : staticCompiledTags;
 
   for (const { slug, pattern } of compiled) {

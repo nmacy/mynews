@@ -508,43 +508,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fallback 1: Google AMP cache
-    const ampResult = await tryAmpCache(url).catch((err) => {
-      console.warn("[extract] AMP cache failed:", (err as Error)?.message);
-      return null;
-    });
-    if (ampResult) {
-      const cleaned = cleanExtractedHtml(ampResult.content);
+    // Fallbacks: run AMP, Jina, and Wayback in parallel — use first success
+    const fallbackResults = await Promise.allSettled([
+      tryAmpCache(url),
+      tryJinaReader(url),
+      tryWaybackMachine(url),
+    ]);
+    for (const settled of fallbackResults) {
+      if (settled.status !== "fulfilled" || !settled.value) continue;
+      const cleaned = cleanExtractedHtml(settled.value.content);
       if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        const result = { ...ampResult, content: cleaned };
-        setCachedExtraction(url, result).catch(() => {});
-        return NextResponse.json(result);
-      }
-    }
-
-    // Fallback 2: Jina Reader API (handles JS-rendered pages)
-    const jinaResult = await tryJinaReader(url).catch((err) => {
-      console.warn("[extract] Jina Reader failed:", (err as Error)?.message);
-      return null;
-    });
-    if (jinaResult) {
-      const cleaned = cleanExtractedHtml(jinaResult.content);
-      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        const result = { ...jinaResult, content: cleaned };
-        setCachedExtraction(url, result).catch(() => {});
-        return NextResponse.json(result);
-      }
-    }
-
-    // Fallback 3: Wayback Machine (for sites that block server-side requests)
-    const waybackResult = await tryWaybackMachine(url).catch((err) => {
-      console.warn("[extract] Wayback Machine failed:", (err as Error)?.message);
-      return null;
-    });
-    if (waybackResult) {
-      const cleaned = cleanExtractedHtml(waybackResult.content);
-      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        const result = { ...waybackResult, content: cleaned };
+        const result = { ...settled.value, content: cleaned };
         setCachedExtraction(url, result).catch(() => {});
         return NextResponse.json(result);
       }

@@ -14,6 +14,7 @@ const FETCH_TIMEOUT = 15_000;
 export async function fetchSitemapSource(
   source: Source,
   extraTags?: TagDefinition[],
+  skipKeywordTags?: boolean,
 ): Promise<Article[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
@@ -69,7 +70,7 @@ export async function fetchSitemapSource(
       publishedAt: pubDate,
       source: { id: source.id, name: source.name },
       categories: [],
-      tags: assignTags({ title, description: desc }, extraTags),
+      tags: skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
       _hasTimestamp: hasTimestamp,

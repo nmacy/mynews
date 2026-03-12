@@ -58,7 +58,7 @@ export async function persistArticles(articles: Article[]): Promise<void> {
         expiresAt = excluded.expiresAt,
         publishedAt = CASE WHEN excluded.hasTimestamp = 1 THEN excluded.publishedAt ELSE Article.publishedAt END,
         hasTimestamp = CASE WHEN excluded.hasTimestamp = 1 THEN 1 ELSE Article.hasTimestamp END,
-        tags = CASE WHEN LENGTH(excluded.tags) > 4 THEN excluded.tags ELSE Article.tags END,
+        tags = CASE WHEN Article.aiTagged = 1 THEN Article.tags WHEN LENGTH(excluded.tags) > 4 THEN excluded.tags ELSE Article.tags END,
         imageUrl = CASE WHEN excluded.imageUrl IS NOT NULL THEN excluded.imageUrl ELSE Article.imageUrl END,
         aiTagged = CASE WHEN excluded.aiTagged = 1 THEN 1 ELSE Article.aiTagged END
     `;

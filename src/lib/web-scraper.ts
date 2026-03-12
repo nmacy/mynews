@@ -267,6 +267,7 @@ export async function fetchHtml(url: string, timeoutMs = FETCH_TIMEOUT): Promise
 export async function fetchWebSource(
   source: Source,
   extraTags?: TagDefinition[],
+  skipKeywordTags?: boolean,
 ): Promise<Article[]> {
   const html = await fetchHtml(source.url);
   const links = scrapeLinks(html, source.url);
@@ -284,7 +285,7 @@ export async function fetchWebSource(
       publishedAt: link.date,
       source: { id: source.id, name: source.name },
       categories: [],
-      tags: assignTags({ title, description }, extraTags),
+      tags: skipKeywordTags ? [] : assignTags({ title, description }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
       _hasTimestamp: link.hasTimestamp,

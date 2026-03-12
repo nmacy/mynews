@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY } from "@/lib/feeds";
+import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY, isAiTaggingEnabled } from "@/lib/feeds";
 import { clearCache, setCache } from "@/lib/cache";
 import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
@@ -116,11 +116,12 @@ export async function POST(request: NextRequest) {
 
       const allArticles: Article[] = [];
       const customTags = await getCustomTags();
+      const skipKeywordTags = await isAiTaggingEnabled();
       let completedCount = 0;
 
       const results = await allSettledWithLimit(
         sources.map((source) => async () => {
-          const articles = await fetchSource(source, customTags);
+          const articles = await fetchSource(source, customTags, skipKeywordTags);
           completedCount++;
           send({ type: "progress", completed: completedCount, total, source: source.name });
           return articles;
@@ -148,9 +149,11 @@ export async function POST(request: NextRequest) {
         const persisted = await loadPersistedArticles(sourceIds);
         const rssUrls = new Set(unique.map((a) => a.url));
         const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
-        // Re-apply keyword tags to DB-only articles
-        for (const article of dbOnly) {
-          article.tags = assignTags({ title: article.title, description: article.description }, customTags);
+        // Re-apply keyword tags to DB-only articles (skip if AI tagging handles it)
+        if (!skipKeywordTags) {
+          for (const article of dbOnly) {
+            article.tags = assignTags({ title: article.title, description: article.description }, customTags);
+          }
         }
         unique.push(...dbOnly);
       } catch (err) {

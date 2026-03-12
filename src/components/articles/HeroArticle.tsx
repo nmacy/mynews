@@ -68,7 +68,7 @@ export function HeroArticle({ article }: { article: Article }) {
           </p>
           {(article.tags ?? []).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-3">
-              {(article.tags ?? []).map((tag) => (
+              {[...new Set(article.tags ?? [])].map((tag) => (
                 <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
               ))}
             </div>

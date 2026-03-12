@@ -109,7 +109,7 @@ export default function ArticlePage() {
       <div className="mb-6">
         {(article.tags ?? []).length > 0 && (
           <div className="flex items-center gap-2 mb-3">
-            {(article.tags ?? []).map((tag) => (
+            {[...new Set(article.tags ?? [])].map((tag) => (
               <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
             ))}
           </div>

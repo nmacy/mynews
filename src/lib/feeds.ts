@@ -35,6 +35,24 @@ const SOURCE_FEED_TTL_MS = 5 * 60 * 1000; // 5 minutes
 /** Track in-flight OG fill jobs so we don't double-trigger */
 const ogFillInFlight = new Set<string>();
 
+/** Cached check for whether AI tagging is enabled (avoids DB hit every fetch) */
+let aiTaggingEnabledCache: { value: boolean; expiresAt: number } | null = null;
+const AI_TAGGING_CHECK_TTL_MS = 60 * 1000; // 1 minute
+
+export async function isAiTaggingEnabled(): Promise<boolean> {
+  if (aiTaggingEnabledCache && Date.now() < aiTaggingEnabledCache.expiresAt) {
+    return aiTaggingEnabledCache.value;
+  }
+  try {
+    const key = await prisma.serverApiKey.findFirst({ where: { enabled: true } });
+    const enabled = !!key;
+    aiTaggingEnabledCache = { value: enabled, expiresAt: Date.now() + AI_TAGGING_CHECK_TTL_MS };
+    return enabled;
+  } catch {
+    return aiTaggingEnabledCache?.value ?? false;
+  }
+}
+
 /**
  * Worker-pool style concurrency limiter for Promise.allSettled.
  * Takes an array of thunk functions (not already-started promises).
@@ -97,9 +115,10 @@ export function getFailedSources(cacheKey: string): FailedSource[] {
 export async function fetchSource(
   source: Source,
   extraTags?: TagDefinition[],
+  skipKeywordTags?: boolean,
 ): Promise<Article[]> {
-  if (source.type === "web") return fetchWebSource(source, extraTags);
-  if (source.type === "sitemap") return fetchSitemapSource(source, extraTags);
+  if (source.type === "web") return fetchWebSource(source, extraTags, skipKeywordTags);
+  if (source.type === "sitemap") return fetchSitemapSource(source, extraTags, skipKeywordTags);
 
   try {
     const feed = await parser.parseURL(source.url);
@@ -128,7 +147,7 @@ export async function fetchSource(
         publishedAt: item.isoDate ?? item.pubDate ?? new Date().toISOString(),
         source: { id: source.id, name: source.name },
         categories: [],
-        tags: assignTags({ title, description: desc }, extraTags),
+        tags: skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
         _hasTimestamp: hasTimestamp,
@@ -148,7 +167,7 @@ export async function fetchSource(
     // RSS parsing failed — try sitemap as fallback (but NOT web scraping,
     // which produces phantom articles from inline content links)
     try {
-      const articles = await fetchSitemapSource(source, extraTags);
+      const articles = await fetchSitemapSource(source, extraTags, skipKeywordTags);
       if (articles.length > 0) {
         console.log(`[feeds] ${source.name}: RSS failed, sitemap fallback succeeded (${articles.length} articles)`);
         return articles;
@@ -204,13 +223,14 @@ async function refreshArticles(
   cacheKey: string,
 ): Promise<Article[]> {
   const customTags = await getCustomTags();
+  const skipKeywordTags = await isAiTaggingEnabled();
 
   const results = await allSettledWithLimit(
     sources.map((source) => async () => {
       const cacheKeyForSource = SOURCE_FEED_CACHE_PREFIX + source.id;
       const cached = getCached<Article[]>(cacheKeyForSource);
       if (cached) return cached;
-      const articles = await fetchSource(source, customTags);
+      const articles = await fetchSource(source, customTags, skipKeywordTags);
       setCache(cacheKeyForSource, articles, SOURCE_FEED_TTL_MS);
       return articles;
     }),
@@ -273,7 +293,8 @@ async function refreshArticles(
       }
       if (dbArticle._aiTagged) {
         article._aiTagged = true;
-        article.tags = dbArticle.tags;
+        // Merge keyword + AI tags, dedup
+        article.tags = [...new Set([...article.tags, ...dbArticle.tags])];
       }
       if (!article.imageUrl && dbArticle.imageUrl) {
         article.imageUrl = dbArticle.imageUrl;

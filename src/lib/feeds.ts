@@ -246,13 +246,15 @@ async function refreshArticles(
     return true;
   });
 
-  // Fire-and-forget DB persist
-  persistArticles(unique).catch((err) => {
-    console.warn("[article-db] Background persist failed:", err);
-  });
+  // Persist to DB before loading so the merge includes this cycle's articles
+  try {
+    await persistArticles(unique);
+  } catch (err) {
+    console.warn("[article-db] Persist failed:", err);
+  }
   pruneExpiredArticles().catch(() => {});
 
-  // Load persisted articles for historical data, merge with fresh
+  // Load ALL persisted articles for merge (no limit — need full 7-day history)
   let final = unique;
   try {
     const sourceIds = sources.map((s) => s.id);
@@ -329,9 +331,9 @@ export async function getAllArticles(): Promise<Article[]> {
     return status.data;
   }
 
-  // Cache miss — try DB first for instant response
+  // Cache miss — try DB first for instant response (limit for speed)
   const allSourceIds = sources.map((s) => s.id);
-  const dbArticles = await loadPersistedArticles(allSourceIds);
+  const dbArticles = await loadPersistedArticles(allSourceIds, 500);
   if (dbArticles.length > 0) {
     dbArticles.sort((a, b) => {
       const aHasTs = a._hasTimestamp !== false;
@@ -452,9 +454,9 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
     return status.data;
   }
 
-  // Cache miss — try DB first for instant response
+  // Cache miss — try DB first for instant response (limit for speed)
   const sourceIds = sources.map((s) => s.id);
-  const dbArticles = await loadPersistedArticles(sourceIds);
+  const dbArticles = await loadPersistedArticles(sourceIds, 500);
   if (dbArticles.length > 0) {
     dbArticles.sort((a, b) => {
       const aHasTs = a._hasTimestamp !== false;

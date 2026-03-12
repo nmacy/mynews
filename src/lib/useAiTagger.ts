@@ -86,7 +86,7 @@ export function useAiTagger(articles: Article[]): {
   isTagging: boolean;
   error: string | null;
 } {
-  const [aiTags, setAiTags] = useState<Record<string, string[]>>(loadTagCache);
+  const [aiTags, setAiTags] = useState<Record<string, string[]>>({});
   const [isTagging, setIsTagging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastBatchRef = useRef<string>("");
@@ -97,8 +97,9 @@ export function useAiTagger(articles: Article[]): {
     model?: string;
   } | null>(null);
 
-  // Fetch AI status on mount
+  // Load cached tags and AI status after hydration to avoid SSR mismatch
   useEffect(() => {
+    setAiTags(loadTagCache());
     fetch("/api/ai-status")
       .then((r) => r.json())
       .then(setAiStatus)

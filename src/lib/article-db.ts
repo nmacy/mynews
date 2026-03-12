@@ -71,7 +71,7 @@ export async function persistArticles(articles: Article[]): Promise<void> {
  * Load all non-expired articles matching the given source IDs,
  * sorted by publishedAt desc.
  */
-export async function loadPersistedArticles(sourceIds: string[]): Promise<Article[]> {
+export async function loadPersistedArticles(sourceIds: string[], limit?: number): Promise<Article[]> {
   if (sourceIds.length === 0) return [];
 
   const rows = await prisma.article.findMany({
@@ -80,7 +80,7 @@ export async function loadPersistedArticles(sourceIds: string[]): Promise<Articl
       expiresAt: { gt: new Date() },
     },
     orderBy: { publishedAt: "desc" },
-    take: 500,
+    ...(limit ? { take: limit } : {}),
   });
 
   return rows.map((r) => ({

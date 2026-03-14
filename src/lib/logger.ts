@@ -122,13 +122,18 @@ export function readLogFileRaw(date: string): string | null {
 }
 
 /**
- * Install console interceptors to capture warn/error to log files.
+ * Install console interceptors to capture all log output to files.
  * Call once at startup (e.g., in instrumentation.ts).
  */
 export function installLogInterceptors(): void {
+  const originalLog = console.log;
   const originalWarn = console.warn;
   const originalError = console.error;
-  const originalLog = console.log;
+
+  console.log = (...args: unknown[]) => {
+    originalLog.apply(console, args);
+    appendLog("info", args);
+  };
 
   console.warn = (...args: unknown[]) => {
     originalWarn.apply(console, args);
@@ -138,14 +143,6 @@ export function installLogInterceptors(): void {
   console.error = (...args: unknown[]) => {
     originalError.apply(console, args);
     appendLog("error", args);
-  };
-
-  // Capture [tagged] log messages (e.g., [feeds], [background-refresh])
-  console.log = (...args: unknown[]) => {
-    originalLog.apply(console, args);
-    if (args.length > 0 && typeof args[0] === "string" && args[0].startsWith("[")) {
-      appendLog("info", args);
-    }
   };
 
   // Prune old logs on startup

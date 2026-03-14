@@ -80,7 +80,7 @@ export function LogViewerSection() {
     >
       <h2 className="text-lg font-bold mb-1">Server Logs</h2>
       <p className="text-xs mb-4" style={{ color: "var(--mn-muted)" }}>
-        View warning and error logs. Files rotate daily, keeping the last 7 days.
+        View server logs. Files rotate daily, keeping the last 7 days.
       </p>
 
       {loading && (

@@ -24,11 +24,13 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Prisma: generated client, all @prisma/* packages, CLI, and schema
+# Prisma client (generated) + schema
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/prisma ./prisma
+
+# Prisma CLI for db push at startup (has deep dependency tree, easier to install fresh)
+RUN npm install --no-save prisma@6.19.2
 
 # Entrypoint
 COPY docker-entrypoint.sh ./

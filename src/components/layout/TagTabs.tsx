@@ -28,8 +28,25 @@ export function TagTabs() {
   const { featuredTags, setFeaturedTags } = useConfig();
   const TAG_MAP = useTagMap();
 
-  const activeSlug =
+  const isListingPage = pathname === "/" || pathname.startsWith("/tag/");
+  const urlSlug =
     pathname === "/" ? null : pathname.startsWith("/tag/") ? pathname.split("/")[2] : null;
+
+  // Persist active tag to sessionStorage so it survives navigation to article/settings pages
+  useEffect(() => {
+    if (isListingPage) {
+      if (urlSlug) {
+        sessionStorage.setItem("mn-active-tag", urlSlug);
+      } else {
+        sessionStorage.removeItem("mn-active-tag");
+      }
+    }
+  }, [isListingPage, urlSlug]);
+
+  // On non-listing pages, show the last active tag
+  const activeSlug = isListingPage ? urlSlug : (
+    typeof window !== "undefined" ? sessionStorage.getItem("mn-active-tag") : null
+  );
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

@@ -97,8 +97,28 @@ export function SourceBar() {
     }
   }, [moreOpen]);
 
+  const isListingPage = pathname === "/" || pathname.startsWith("/tag/");
   const sourcesParam = searchParams.get("sources") || "";
-  const activeIds = sourcesParam ? sourcesParam.split(",").filter(Boolean) : [];
+  const urlActiveIds = sourcesParam ? sourcesParam.split(",").filter(Boolean) : [];
+
+  // Persist active sources to sessionStorage so they survive navigation to article/settings pages
+  useEffect(() => {
+    if (isListingPage) {
+      if (urlActiveIds.length > 0) {
+        sessionStorage.setItem("mn-active-sources", urlActiveIds.join(","));
+      } else {
+        sessionStorage.removeItem("mn-active-sources");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isListingPage, sourcesParam]);
+
+  // On non-listing pages, show the last active sources
+  const activeIds = isListingPage ? urlActiveIds : (
+    typeof window !== "undefined"
+      ? (sessionStorage.getItem("mn-active-sources") || "").split(",").filter(Boolean)
+      : []
+  );
   const activeSet = new Set(activeIds);
 
   // Split into featured (inline) vs overflow groups
@@ -122,8 +142,8 @@ export function SourceBar() {
     return overflowGroups.filter((g) => g.name.toLowerCase().includes(q));
   }, [overflowGroups, search]);
 
-  // Only show on article-listing pages
-  if (pathname !== "/" && !pathname.startsWith("/tag/")) return null;
+  // Hide on auth pages only
+  if (pathname === "/login" || pathname === "/signup") return null;
   if (groups.length === 0) return null;
 
   const updateSources = (nextIds: string[]) => {

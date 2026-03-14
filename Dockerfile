@@ -28,6 +28,7 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build /app/prisma ./prisma
 
 # Entrypoint

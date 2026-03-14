@@ -59,9 +59,15 @@ function logFilePath(date?: string): string {
 function appendLog(level: LogLevel, args: unknown[]): void {
   try {
     const timestamp = new Date().toISOString();
-    const message = args
-      .map((a) => (typeof a === "string" ? a : JSON.stringify(a, null, 0)))
+    const raw = args
+      .map((a) => {
+        if (typeof a === "string") return a;
+        if (a instanceof Error) return `${a.message}${a.stack ? "\n" + a.stack : ""}`;
+        return JSON.stringify(a, null, 0);
+      })
       .join(" ");
+    // Strip ANSI escape codes for clean log files
+    const message = raw.replace(/\u001b\[[0-9;]*m/g, "");
     const line = JSON.stringify({ timestamp, level, message }) + "\n";
     fs.appendFileSync(logFilePath(), line);
   } catch {

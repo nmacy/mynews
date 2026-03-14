@@ -24,11 +24,10 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Prisma client (generated) + schema + CLI from build stage (avoids npm install in runner)
+# Prisma: generated client, all @prisma/* packages, CLI, and schema
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build /app/prisma ./prisma
 
 # Entrypoint

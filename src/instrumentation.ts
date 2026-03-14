@@ -1,7 +1,8 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // Install log interceptors early — works in both dev and production
+  // (NEXT_RUNTIME may not be set in dev mode)
+  if (process.env.NEXT_RUNTIME === "edge") return;
 
-  // Install log interceptors to capture warn/error to daily rotating files
   const { installLogInterceptors } = await import("@/lib/logger");
   installLogInterceptors();
 

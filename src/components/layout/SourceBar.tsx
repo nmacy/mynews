@@ -101,24 +101,26 @@ export function SourceBar() {
   const sourcesParam = searchParams.get("sources") || "";
   const urlActiveIds = sourcesParam ? sourcesParam.split(",").filter(Boolean) : [];
 
-  // Persist active sources to sessionStorage so they survive navigation to article/settings pages
+  // Restore active sources from sessionStorage after hydration (non-listing pages only)
+  const [restoredIds, setRestoredIds] = useState<string[]>([]);
   useEffect(() => {
     if (isListingPage) {
+      // Persist current selection
       if (urlActiveIds.length > 0) {
         sessionStorage.setItem("mn-active-sources", urlActiveIds.join(","));
       } else {
         sessionStorage.removeItem("mn-active-sources");
       }
+      setRestoredIds([]);
+    } else {
+      // Restore from sessionStorage
+      const stored = sessionStorage.getItem("mn-active-sources");
+      setRestoredIds(stored ? stored.split(",").filter(Boolean) : []);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isListingPage, sourcesParam]);
 
-  // On non-listing pages, show the last active sources
-  const activeIds = isListingPage ? urlActiveIds : (
-    typeof window !== "undefined"
-      ? (sessionStorage.getItem("mn-active-sources") || "").split(",").filter(Boolean)
-      : []
-  );
+  const activeIds = isListingPage ? urlActiveIds : restoredIds;
   const activeSet = new Set(activeIds);
 
   // Split into featured (inline) vs overflow groups

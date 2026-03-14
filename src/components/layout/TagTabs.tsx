@@ -32,7 +32,8 @@ export function TagTabs() {
   const urlSlug =
     pathname === "/" ? null : pathname.startsWith("/tag/") ? pathname.split("/")[2] : null;
 
-  // Persist active tag to sessionStorage so it survives navigation to article/settings pages
+  // Restore active tag from sessionStorage after hydration (non-listing pages only)
+  const [restoredSlug, setRestoredSlug] = useState<string | null>(null);
   useEffect(() => {
     if (isListingPage) {
       if (urlSlug) {
@@ -40,13 +41,13 @@ export function TagTabs() {
       } else {
         sessionStorage.removeItem("mn-active-tag");
       }
+      setRestoredSlug(null);
+    } else {
+      setRestoredSlug(sessionStorage.getItem("mn-active-tag"));
     }
   }, [isListingPage, urlSlug]);
 
-  // On non-listing pages, show the last active tag
-  const activeSlug = isListingPage ? urlSlug : (
-    typeof window !== "undefined" ? sessionStorage.getItem("mn-active-tag") : null
-  );
+  const activeSlug = isListingPage ? urlSlug : restoredSlug;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

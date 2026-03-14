@@ -28,6 +28,7 @@ import { DefaultSourcesSection } from "@/components/settings/DefaultSourcesSecti
 import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
 import { CacheSection } from "@/components/settings/CacheSection";
+import { LogViewerSection } from "@/components/settings/LogViewerSection";
 import { SystemStatusSection } from "@/components/settings/SystemStatusSection";
 import { DEFAULT_FEATURED_TAGS } from "@/components/layout/TagTabs";
 import { useSourceGroups, sourceColor } from "@/components/layout/SourceBar";
@@ -1453,6 +1454,8 @@ function AdminSettingsGroup() {
           <CacheSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <SystemStatusSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <LogViewerSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <AdminUsersSection />
         </div>

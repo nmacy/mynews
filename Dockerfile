@@ -37,7 +37,7 @@ COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
 # SQLite data directory + Next.js image cache
-RUN mkdir -p /data .next/cache && chown -R nextjs:nodejs /data .next/cache
+RUN mkdir -p /data /data/logs .next/cache && chown -R nextjs:nodejs /data .next/cache
 
 USER nextjs
 

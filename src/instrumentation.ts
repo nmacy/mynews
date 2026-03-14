@@ -1,6 +1,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Install log interceptors to capture warn/error to daily rotating files
+  const { installLogInterceptors } = await import("@/lib/logger");
+  installLogInterceptors();
+
   let consecutiveFailures = 0;
   const MAX_BACKOFF_MS = 30 * 60 * 1000; // 30 minutes
 

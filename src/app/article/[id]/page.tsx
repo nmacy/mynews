@@ -20,6 +20,81 @@ const PURIFY_CONFIG = {
   ALLOW_DATA_ATTR: false,
 };
 
+function IframeFallback({ article, displayContent }: { article: Article; displayContent: string }) {
+  const [mode, setMode] = useState<"iframe" | "excerpt">("iframe");
+  const proxyUrl = `https://removepaywalls.com/${article.url}`;
+
+  return (
+    <div>
+      <div
+        className="mb-4 px-4 py-3 rounded-xl flex flex-wrap items-center gap-3"
+        style={{ backgroundColor: "var(--mn-bg)", border: "1px solid var(--mn-border)" }}
+      >
+        <p className="text-sm flex-1" style={{ color: "var(--mn-muted)" }}>
+          {article.paywalled
+            ? "This article is behind a paywall. Showing proxied version below."
+            : "Could not extract article content. Showing proxied version below."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode("iframe")}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{
+              backgroundColor: mode === "iframe" ? "var(--mn-accent)" : "transparent",
+              color: mode === "iframe" ? "white" : "var(--mn-muted)",
+              border: "1px solid var(--mn-border)",
+            }}
+          >
+            Full Article
+          </button>
+          <button
+            onClick={() => setMode("excerpt")}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{
+              backgroundColor: mode === "excerpt" ? "var(--mn-accent)" : "transparent",
+              color: mode === "excerpt" ? "white" : "var(--mn-muted)",
+              border: "1px solid var(--mn-border)",
+            }}
+          >
+            Excerpt
+          </button>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium"
+            style={{ color: "var(--mn-link)", border: "1px solid var(--mn-border)" }}
+          >
+            Source &rarr;
+          </a>
+        </div>
+      </div>
+
+      {mode === "iframe" ? (
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ border: "1px solid var(--mn-border)" }}
+        >
+          <iframe
+            src={proxyUrl}
+            title={article.title}
+            className="w-full"
+            style={{ height: "80vh", border: "none" }}
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-popups"
+          />
+        </div>
+      ) : (
+        <div
+          className="prose prose-lg max-w-none prose-img:rounded-xl"
+          style={{ color: "var(--mn-fg)" }}
+          dangerouslySetInnerHTML={{ __html: displayContent }}
+        />
+      )}
+    </div>
+  );
+}
+
 function ArticleDetailSkeleton() {
   return (
     <div className="max-w-3xl mx-auto animate-pulse">
@@ -150,45 +225,16 @@ export default function ArticlePage() {
       )}
 
       {extractError && !fullContent && (
-        <div
-          className="mb-6 px-4 py-4 rounded-xl"
-          style={{ backgroundColor: "var(--mn-bg)", border: "1px solid var(--mn-border)" }}
-        >
-          {article.paywalled ? (
-            <>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
-                  Paywalled
-                </span>
-                <span className="text-sm font-medium">{article.source.name}</span>
-              </div>
-              <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
-                This article is behind a paywall. The excerpt below is from the RSS feed.
-                Read the full article on the source site.
-              </p>
-            </>
-          ) : (
-            <p className="text-sm mb-3" style={{ color: "var(--mn-muted)" }}>
-              Could not load the full article. Showing the available excerpt below.
-            </p>
-          )}
-          <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block px-4 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ backgroundColor: "var(--mn-link)" }}
-          >
-            Read full article on {article.source.name} &rarr;
-          </a>
-        </div>
+        <IframeFallback article={article} displayContent={displayContent} />
       )}
 
-      <div
-        className="prose prose-lg max-w-none prose-img:rounded-xl"
-        style={{ color: "var(--mn-fg)" }}
-        dangerouslySetInnerHTML={{ __html: displayContent }}
-      />
+      {(!extractError || fullContent) && (
+        <div
+          className="prose prose-lg max-w-none prose-img:rounded-xl"
+          style={{ color: "var(--mn-fg)" }}
+          dangerouslySetInnerHTML={{ __html: displayContent }}
+        />
+      )}
 
       <div className="flex items-center justify-between mt-10 pt-6" style={{ borderTop: "1px solid var(--mn-border)" }}>
         <button

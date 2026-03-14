@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-const LOG_DIR = process.env.LOG_DIR || "/data/logs";
 const RETENTION_DAYS = 7;
 
 type LogLevel = "info" | "warn" | "error";
@@ -12,27 +11,53 @@ interface LogEntry {
   message: string;
 }
 
-/** Ensure log directory exists */
-function ensureDir(): void {
-  try {
-    if (!fs.existsSync(LOG_DIR)) {
-      fs.mkdirSync(LOG_DIR, { recursive: true });
+/** Resolve the log directory, with fallback for local dev */
+let resolvedLogDir: string | null = null;
+
+function getLogDir(): string {
+  if (resolvedLogDir) return resolvedLogDir;
+
+  const candidates = [
+    process.env.LOG_DIR,
+    "/data/logs",
+    path.join(process.cwd(), "logs"),
+  ].filter(Boolean) as string[];
+
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Test that we can actually write
+      const testFile = path.join(dir, ".write-test");
+      fs.writeFileSync(testFile, "");
+      fs.unlinkSync(testFile);
+      resolvedLogDir = dir;
+      return dir;
+    } catch {
+      // Try next candidate
     }
-  } catch {
-    // Can't create dir — logging will silently fail
   }
+
+  // Last resort — temp directory
+  resolvedLogDir = path.join(require("os").tmpdir(), "mynews-logs");
+  try {
+    fs.mkdirSync(resolvedLogDir, { recursive: true });
+  } catch {
+    // Nothing we can do
+  }
+  return resolvedLogDir;
 }
 
 /** Get the log file path for a given date (YYYY-MM-DD) */
 function logFilePath(date?: string): string {
   const d = date || new Date().toISOString().slice(0, 10);
-  return path.join(LOG_DIR, `${d}.log`);
+  return path.join(getLogDir(), `${d}.log`);
 }
 
 /** Append a line to today's log file */
 function appendLog(level: LogLevel, args: unknown[]): void {
   try {
-    ensureDir();
     const timestamp = new Date().toISOString();
     const message = args
       .map((a) => (typeof a === "string" ? a : JSON.stringify(a, null, 0)))
@@ -47,17 +72,16 @@ function appendLog(level: LogLevel, args: unknown[]): void {
 /** Prune log files older than RETENTION_DAYS */
 export function pruneOldLogs(): void {
   try {
-    ensureDir();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
-    const files = fs.readdirSync(LOG_DIR);
+    const files = fs.readdirSync(getLogDir());
     for (const file of files) {
       if (!file.endsWith(".log")) continue;
       const dateStr = file.replace(".log", "");
       const fileDate = new Date(dateStr + "T00:00:00Z");
       if (isNaN(fileDate.getTime())) continue;
       if (fileDate < cutoff) {
-        fs.unlinkSync(path.join(LOG_DIR, file));
+        fs.unlinkSync(path.join(getLogDir(), file));
       }
     }
   } catch {
@@ -68,12 +92,11 @@ export function pruneOldLogs(): void {
 /** List available log files, newest first */
 export function listLogFiles(): { date: string; sizeKb: number }[] {
   try {
-    ensureDir();
-    const files = fs.readdirSync(LOG_DIR);
+    const files = fs.readdirSync(getLogDir());
     return files
       .filter((f) => f.endsWith(".log"))
       .map((f) => {
-        const stat = fs.statSync(path.join(LOG_DIR, f));
+        const stat = fs.statSync(path.join(getLogDir(), f));
         return { date: f.replace(".log", ""), sizeKb: Math.round(stat.size / 1024) };
       })
       .sort((a, b) => b.date.localeCompare(a.date));

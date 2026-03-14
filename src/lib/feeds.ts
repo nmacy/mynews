@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { getCached, getCachedWithStatus, setCache, isRefreshing, markRefreshing, unmarkRefreshing } from "./cache";
+import { getCached, getCachedWithStatus, setCache, clearCache } from "./cache";
 import { generateArticleId, stripHtml, truncate, decodeHtmlEntities } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
@@ -25,12 +25,13 @@ const parser = new Parser({
   timeout: 10000,
 });
 
-const ALL_ARTICLES_KEY = "all-articles";
 const FAILED_SOURCES_KEY = "failed-sources";
 const OG_CONCURRENCY = 10; // max concurrent OG requests
 export const RSS_CONCURRENCY = 10; // max concurrent RSS fetches
 const SOURCE_FEED_CACHE_PREFIX = "source-feed:";
 const SOURCE_FEED_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DB_READ_CACHE_PREFIX = "db-articles:";
+const DB_READ_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
 /** Track in-flight OG fill jobs so we don't double-trigger */
 const ogFillInFlight = new Set<string>();
@@ -182,14 +183,15 @@ export async function fetchSource(
 }
 
 /**
- * Fill missing OG images in the background and update the cache when done.
+ * Fill missing OG images in the background and update DB.
  * Non-blocking — the caller returns articles immediately.
  */
-function fillOgImagesInBackground(articles: Article[], cacheKey: string): void {
+function fillOgImagesInBackground(articles: Article[]): void {
   const needImages = articles.filter((a) => !a.imageUrl);
-  if (needImages.length === 0 || ogFillInFlight.has(cacheKey)) return;
+  const key = articles.map((a) => a.id).sort().join(",").slice(0, 100);
+  if (needImages.length === 0 || ogFillInFlight.has(key)) return;
 
-  ogFillInFlight.add(cacheKey);
+  ogFillInFlight.add(key);
 
   (async () => {
     for (let i = 0; i < needImages.length; i += OG_CONCURRENCY) {
@@ -201,27 +203,89 @@ function fillOgImagesInBackground(articles: Article[], cacheKey: string): void {
         })
       );
     }
-    // Update cache with images filled in (articles array was mutated)
-    setCache(cacheKey, articles);
-    // Persist newly-found OG images to DB so they survive cache eviction
+    // Persist newly-found OG images to DB
     const withNewImages = needImages.filter((a) => a.imageUrl);
     if (withNewImages.length > 0) {
       updateArticleImages(withNewImages.map((a) => ({ url: a.url, imageUrl: a.imageUrl! }))).catch(() => {});
     }
-    ogFillInFlight.delete(cacheKey);
+    ogFillInFlight.delete(key);
   })().catch(() => {
-    ogFillInFlight.delete(cacheKey);
+    ogFillInFlight.delete(key);
   });
 }
 
+/** Standard sort: real timestamps first, then by date descending */
+function sortArticles(articles: Article[]): void {
+  articles.sort((a, b) => {
+    const aHasTs = a._hasTimestamp !== false;
+    const bHasTs = b._hasTimestamp !== false;
+    if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  });
+}
+
+// ─── Read path: DB is the single source of truth ───────────────────────────
+
 /**
- * Core fetch+deduplicate logic shared by getAllArticles and getArticlesForSources.
- * Returns deduplicated, sorted articles merged with DB history.
+ * Load articles for the given source IDs from the database.
+ * Uses a short-lived in-memory cache to avoid redundant DB reads.
  */
-async function refreshArticles(
-  sources: Source[],
-  cacheKey: string,
-): Promise<Article[]> {
+async function loadArticlesFromDb(sourceIds: string[]): Promise<Article[]> {
+  const cacheKey = DB_READ_CACHE_PREFIX + sourceIds.sort().join(",");
+  const cached = getCached<Article[]>(cacheKey);
+  if (cached) return cached;
+
+  const articles = await loadPersistedArticles(sourceIds);
+  sortArticles(articles);
+
+  setCache(cacheKey, articles, DB_READ_CACHE_TTL_MS);
+  fillOgImagesInBackground(articles);
+  return articles;
+}
+
+/**
+ * Get articles for a specific set of sources. Always reads from DB.
+ * The background refresh (instrumentation.ts) keeps the DB up-to-date.
+ */
+export async function getArticlesForSources(sources: Source[]): Promise<Article[]> {
+  const sourceIds = sources.map((s) => s.id);
+  const articles = await loadArticlesFromDb(sourceIds);
+
+  // If DB is empty for these sources, do a one-time synchronous fetch
+  // to seed the DB (first-ever load for these sources)
+  if (articles.length === 0) {
+    console.log(`[feeds] DB empty for ${sourceIds.length} sources, seeding from RSS`);
+    await refreshAndPersist(sources);
+    return loadPersistedArticles(sourceIds).then((a) => {
+      sortArticles(a);
+      return a;
+    });
+  }
+
+  return articles;
+}
+
+/**
+ * Get all articles across all sources. Always reads from DB.
+ */
+export async function getAllArticles(): Promise<Article[]> {
+  const sources = await getAllSourcesAcrossUsers();
+  return getArticlesForSources(sources);
+}
+
+export async function getArticleById(id: string): Promise<Article | null> {
+  const all = await getAllArticles();
+  return all.find((a) => a.id === id) ?? null;
+}
+
+// ─── Write path: background refresh fetches RSS and persists to DB ─────────
+
+/**
+ * Fetch RSS feeds for the given sources and persist articles to DB.
+ * Called by background refresh (instrumentation.ts) and admin rescan.
+ * Returns the deduplicated articles for callers that need them (e.g., AI tagging).
+ */
+export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
   const customTags = await getCustomTags();
   const skipKeywordTags = await isAiTaggingEnabled();
 
@@ -255,7 +319,9 @@ async function refreshArticles(
   }
 
   if (failed.length > 0) {
+    const cacheKey = `articles:${sources.map((s) => s.id).sort().join(",")}`;
     setCache(`${FAILED_SOURCES_KEY}:${cacheKey}`, failed);
+    console.warn(`[feeds] ${failed.length} source(s) failed:`, failed.map((f) => f.name).join(", "));
   }
 
   // Deduplicate by URL
@@ -266,26 +332,27 @@ async function refreshArticles(
     return true;
   });
 
-  // Persist to DB before loading so the merge includes this cycle's articles
+  // Persist fresh articles to DB
   try {
     await persistArticles(unique);
   } catch (err) {
     console.warn("[article-db] Persist failed:", err);
   }
 
-  // Load ALL persisted articles for merge (no limit — need full 7-day history)
-  // NOTE: pruneExpiredArticles() is deferred until AFTER the load to avoid
-  // SQLite "database is busy" errors from concurrent DELETE + SELECT
-  let final = unique;
-  let dbMergeSucceeded = false;
+  // Prune expired articles (sequential, not concurrent with reads)
+  try {
+    await pruneExpiredArticles();
+  } catch (err) {
+    console.warn("[article-db] Prune failed:", err);
+  }
+
+  // Invalidate DB read caches so next request picks up new articles
+  invalidateArticleCaches();
+
+  // Carry over DB fields (timestamps, AI tags, images) for the returned articles
   try {
     const sourceIds = sources.map((s) => s.id);
     const persisted = await loadPersistedArticles(sourceIds);
-
-    // Carry over stable DB fields to fresh RSS articles:
-    // - publishedAt for articles without real timestamps
-    // - _aiTagged so already-tagged articles aren't re-tagged
-    // - imageUrl if RSS didn't have one but DB does (from OG fill)
     const dbMap = new Map(persisted.map((a) => [a.url, a]));
     for (const article of unique) {
       const dbArticle = dbMap.get(article.url);
@@ -295,102 +362,34 @@ async function refreshArticles(
       }
       if (dbArticle._aiTagged) {
         article._aiTagged = true;
-        // Merge keyword + AI tags, dedup
         article.tags = [...new Set([...article.tags, ...dbArticle.tags])];
       }
       if (!article.imageUrl && dbArticle.imageUrl) {
         article.imageUrl = dbArticle.imageUrl;
       }
     }
-
+    // Include DB-only articles (rotated out of RSS but still persisted)
     const rssUrls = new Set(unique.map((a) => a.url));
     const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
-    final = [...unique, ...dbOnly];
-    dbMergeSucceeded = true;
+    unique.push(...dbOnly);
   } catch (err) {
-    console.warn("[article-db] DB load failed, using RSS-only results:", err);
+    console.warn("[article-db] DB load for merge failed:", err);
   }
 
-  // Prune expired articles AFTER the load to avoid SQLite concurrency issues
-  pruneExpiredArticles().catch(() => {});
-
-  // Sort by date, most recent first.
-  // Articles without real timestamps sort after those with real timestamps
-  // to prevent them from jumping to the top on every refresh.
-  final.sort((a, b) => {
-    const aHasTs = a._hasTimestamp !== false;
-    const bHasTs = b._hasTimestamp !== false;
-    if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
-    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-  });
-
-  // If the DB merge failed, we only have RSS articles which may be a subset.
-  // Preserve existing cached data if it has more articles, to avoid
-  // background refreshes wiping out good cached articles.
-  if (!dbMergeSucceeded || final.length === 0) {
-    const existing = getCached<Article[]>(cacheKey);
-    if (existing && existing.length > final.length) {
-      console.log(`[feeds] Preserving ${existing.length} cached articles for ${cacheKey} (refresh produced only ${final.length}, DB merge ${dbMergeSucceeded ? "empty" : "failed"})`);
-      return existing;
-    }
-  }
-
-  setCache(cacheKey, final);
-  fillOgImagesInBackground(final, cacheKey);
-
-  return final;
+  sortArticles(unique);
+  return unique;
 }
 
 /**
- * Background refresh that doesn't block callers.
+ * Invalidate all DB-read article caches so next request reads fresh from DB.
  */
-function triggerBackgroundRefresh(sources: Source[], cacheKey: string): void {
-  markRefreshing(cacheKey);
-  refreshArticles(sources, cacheKey)
-    .catch((err) => console.warn("[feeds] Background refresh failed:", err))
-    .finally(() => unmarkRefreshing(cacheKey));
+function invalidateArticleCaches(): void {
+  // clearCache() clears everything; we could be more surgical but
+  // the DB read caches are cheap to repopulate (2-min TTL anyway)
+  clearCache();
 }
 
-export async function getAllArticles(): Promise<Article[]> {
-  const status = getCachedWithStatus<Article[]>(ALL_ARTICLES_KEY);
-
-  if (status && !status.stale) {
-    // Fresh cache — return immediately
-    return status.data;
-  }
-
-  const sources = await getAllSourcesAcrossUsers();
-
-  if (status && status.stale) {
-    // Stale cache — return stale data, trigger background refresh if not already running
-    if (!isRefreshing(ALL_ARTICLES_KEY)) {
-      triggerBackgroundRefresh(sources, ALL_ARTICLES_KEY);
-    }
-    return status.data;
-  }
-
-  // Cache miss — try DB first for instant response (limit for speed)
-  const allSourceIds = sources.map((s) => s.id);
-  const dbArticles = await loadPersistedArticles(allSourceIds, 500);
-  if (dbArticles.length > 0) {
-    dbArticles.sort((a, b) => {
-      const aHasTs = a._hasTimestamp !== false;
-      const bHasTs = b._hasTimestamp !== false;
-      if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
-    setCache(ALL_ARTICLES_KEY, dbArticles);
-    triggerBackgroundRefresh(sources, ALL_ARTICLES_KEY);
-    return dbArticles;
-  }
-  // DB empty — synchronous refresh (first-ever load)
-  return refreshArticles(sources, ALL_ARTICLES_KEY);
-}
-
-export async function getArticleById(id: string): Promise<Article | null> {
-  const all = await getAllArticles();
-  return all.find((a) => a.id === id) ?? null;
-}
+// ─── Source management ─────────────────────────────────────────────────────
 
 export async function getSources(): Promise<Source[]> {
   try {
@@ -468,44 +467,4 @@ async function computeAllSources(): Promise<Source[]> {
   }).catch(() => {});
 
   return result;
-}
-
-/**
- * Fetch articles only from the provided source list (for user-customized configs).
- * Caches by a key derived from the sorted source IDs.
- * Uses stale-while-revalidate: stale data returned instantly while refreshing in background.
- */
-export async function getArticlesForSources(sources: Source[]): Promise<Article[]> {
-  const cacheKey = `articles:${sources.map((s) => s.id).sort().join(",")}`;
-  const status = getCachedWithStatus<Article[]>(cacheKey);
-
-  if (status && !status.stale) {
-    // Fresh cache — return immediately
-    return status.data;
-  }
-
-  if (status && status.stale) {
-    // Stale cache — return stale data, trigger background refresh if not already running
-    if (!isRefreshing(cacheKey)) {
-      triggerBackgroundRefresh(sources, cacheKey);
-    }
-    return status.data;
-  }
-
-  // Cache miss — try DB first for instant response (limit for speed)
-  const sourceIds = sources.map((s) => s.id);
-  const dbArticles = await loadPersistedArticles(sourceIds, 500);
-  if (dbArticles.length > 0) {
-    dbArticles.sort((a, b) => {
-      const aHasTs = a._hasTimestamp !== false;
-      const bHasTs = b._hasTimestamp !== false;
-      if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
-    setCache(cacheKey, dbArticles);
-    triggerBackgroundRefresh(sources, cacheKey);
-    return dbArticles;
-  }
-  // DB empty — synchronous refresh (first-ever load)
-  return refreshArticles(sources, cacheKey);
 }

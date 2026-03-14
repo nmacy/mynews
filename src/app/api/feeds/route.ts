@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY, isAiTaggingEnabled } from "@/lib/feeds";
-import { clearCache, setCache } from "@/lib/cache";
+import { clearCache } from "@/lib/cache";
 import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
       try { await persistArticles(unique); } catch (err) {
         console.warn("[rescan] article persist failed:", err);
       }
-      setCache("all-articles", unique);
+      clearCache(); // Invalidate DB-read caches so next request picks up fresh data
       send({ type: "done", completed: total, total, count: unique.length, aiTagged: aiTagCount });
       controller.close();
     },

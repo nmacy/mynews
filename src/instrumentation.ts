@@ -6,10 +6,11 @@ export async function register() {
 
   async function refresh() {
     try {
-      const { getAllArticles } = await import("@/lib/feeds");
-      const articles = await getAllArticles();
+      const { getAllSourcesAcrossUsers, refreshAndPersist } = await import("@/lib/feeds");
+      const sources = await getAllSourcesAcrossUsers();
+      const articles = await refreshAndPersist(sources);
       consecutiveFailures = 0;
-      console.log("[background-refresh] Feed refresh complete");
+      console.log(`[background-refresh] Feed refresh complete (${articles.length} articles)`);
 
       try {
         const { setServerConfig } = await import("@/lib/server-config");

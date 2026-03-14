@@ -272,10 +272,12 @@ async function refreshArticles(
   } catch (err) {
     console.warn("[article-db] Persist failed:", err);
   }
-  pruneExpiredArticles().catch(() => {});
 
   // Load ALL persisted articles for merge (no limit — need full 7-day history)
+  // NOTE: pruneExpiredArticles() is deferred until AFTER the load to avoid
+  // SQLite "database is busy" errors from concurrent DELETE + SELECT
   let final = unique;
+  let dbMergeSucceeded = false;
   try {
     const sourceIds = sources.map((s) => s.id);
     const persisted = await loadPersistedArticles(sourceIds);
@@ -304,9 +306,13 @@ async function refreshArticles(
     const rssUrls = new Set(unique.map((a) => a.url));
     const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
     final = [...unique, ...dbOnly];
+    dbMergeSucceeded = true;
   } catch (err) {
     console.warn("[article-db] DB load failed, using RSS-only results:", err);
   }
+
+  // Prune expired articles AFTER the load to avoid SQLite concurrency issues
+  pruneExpiredArticles().catch(() => {});
 
   // Sort by date, most recent first.
   // Articles without real timestamps sort after those with real timestamps
@@ -317,6 +323,17 @@ async function refreshArticles(
     if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
     return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
   });
+
+  // If the DB merge failed, we only have RSS articles which may be a subset.
+  // Preserve existing cached data if it has more articles, to avoid
+  // background refreshes wiping out good cached articles.
+  if (!dbMergeSucceeded || final.length === 0) {
+    const existing = getCached<Article[]>(cacheKey);
+    if (existing && existing.length > final.length) {
+      console.log(`[feeds] Preserving ${existing.length} cached articles for ${cacheKey} (refresh produced only ${final.length}, DB merge ${dbMergeSucceeded ? "empty" : "failed"})`);
+      return existing;
+    }
+  }
 
   setCache(cacheKey, final);
   fillOgImagesInBackground(final, cacheKey);

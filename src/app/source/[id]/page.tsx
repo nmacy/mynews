@@ -49,24 +49,38 @@ export default function SourcePage() {
 
   const source = allSources.find((s) => s.id === id);
 
+  // Stable reference: only re-fetch when the source ID or URL changes, not
+  // when ConfigProvider re-renders allSources with a new array reference
+  const sourceId = source?.id;
+  const sourceUrl = source?.url;
+
   useEffect(() => {
     if (!source) {
       setLoading(false);
       return;
     }
 
+    const controller = new AbortController();
     setLoading(true);
     const params = new URLSearchParams();
     params.set("sources", JSON.stringify([source]));
 
-    fetch(`/api/feeds?${params}`)
+    fetch(`/api/feeds?${params}`, { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles as Article[]);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [source]);
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error(err);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, sourceUrl]);
 
   useEffect(() => {
     if (loading) return;

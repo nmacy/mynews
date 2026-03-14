@@ -31,15 +31,15 @@ interface ExtractionResult {
 
 /** CSS selectors commonly used for article body content, in priority order */
 const CONTENT_SELECTORS = [
-  ".post-content",
-  ".article-body",
-  ".article-content",
-  ".entry-content",
-  ".story-body",
   "[itemprop='articleBody']",
-  ".caas-body",
+  ".article-body",
   ".article__body",
+  ".article-content",
+  ".story-body",
+  ".entry-content",
+  ".caas-body",
   ".content-body",
+  ".post-content",
 ];
 
 /** Clean extracted HTML: remove non-content artifacts from all strategies */
@@ -116,7 +116,7 @@ function cleanExtractedHtml(html: string): string {
   // Pass 5 — Remove elements with junk text (ads, paywall CTAs, labels, follow prompts)
   const labelPattern = /^\s*(advertisements?|skip\s+ad(vertisement)?s?|video|image|credit)\s*$/i;
   const paywallPattern = /thank\s+you\s+for\s+your\s+patience|verify(ing)?\s+(your\s+)?access|already\s+a\s+subscriber|want\s+all\s+of\s+the\s+times|you\s+have\s+.{0,20}preview|checking\s+(your\s+)?access|full\s+article\s+.{0,20}will\s+load|sign\s+up\s+(for|to)\s+(free|full)|subscribe\s+(now|for\s+all)|unlock\s+(this|the\s+full)|free\s+(trial|article)|reader\s+mode\s+.{0,20}(exit|log\s*in)/i;
-  const ctaPattern = /follow\s+(topics?|authors?|this\s+story)|see\s+more\s+like\s+this|personalized\s+homepage|receive\s+email\s+updates/i;
+  const ctaPattern = /follow\s+(topics?|authors?|this\s+story)|see\s+more\s+like\s+this|personalized\s+homepage|receive\s+email\s+updates|get\s+the\s+.{0,30}newsletter|sign\s+up\s+for\s+.{0,30}newsletter|sent\s+(every|six|five|seven)\s+(day|week)|breakthroughs.*discoveries.*tips/i;
   for (const el of body.querySelectorAll("p, div, span, a, li")) {
     if (!el.parentNode) continue;
     const text = el.textContent?.trim() ?? "";
@@ -487,17 +487,23 @@ export async function GET(request: NextRequest) {
     );
 
     if (results.length > 0) {
-      results.sort((a, b) => b.content.length - a.content.length);
-      const best = results[0];
-      const cleaned = cleanExtractedHtml(best.content);
-      // If cleaning stripped everything, treat as failed extraction
-      if (cleaned.replace(/<[^>]*>/g, "").trim().length < 50) {
-        // fall through to AMP / 422
-      } else {
+      // Clean all candidates first, then pick the one with the most actual text
+      // (raw HTML length is unreliable — sidebars with many links can be longer)
+      const cleaned = results.map((r) => ({
+        ...r,
+        cleanedContent: cleanExtractedHtml(r.content),
+      }));
+      cleaned.sort((a, b) => {
+        const aText = a.cleanedContent.replace(/<[^>]*>/g, "").trim().length;
+        const bText = b.cleanedContent.replace(/<[^>]*>/g, "").trim().length;
+        return bText - aText;
+      });
+      const best = cleaned[0];
+      if (best.cleanedContent.replace(/<[^>]*>/g, "").trim().length >= 50) {
         const meta = extractResult ?? best;
         const result = {
           title: meta.title ?? best.title,
-          content: cleaned,
+          content: best.cleanedContent,
           author: meta.author ?? best.author,
           published: meta.published ?? best.published,
           image: meta.image ?? best.image,

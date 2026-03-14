@@ -368,42 +368,6 @@ async function tryAmpCache(url: string): Promise<ExtractionResult | null> {
   return null;
 }
 
-/** Try Google Web Cache — bypasses paywalls and rate limits for cached pages */
-async function tryGoogleCache(url: string): Promise<ExtractionResult | null> {
-  const cacheUrl = `https://webcache.googleusercontent.com/search?q=cache:${encodeURIComponent(url)}&strip=1`;
-  const res = await fetch(cacheUrl, {
-    headers: {
-      ...FETCH_HEADERS,
-      // Google cache requires a more specific accept header
-      Accept: "text/html,application/xhtml+xml",
-    },
-    signal: AbortSignal.timeout(10000),
-    redirect: "follow",
-  });
-  if (!res.ok) return null;
-
-  const html = await res.text();
-  // Google cache wraps content — detect empty/error responses
-  if (html.length < 500 || /sorry.*unusual traffic|captcha/i.test(html)) return null;
-
-  // Try Readability on the cached page
-  const dom = new JSDOM(html, { url });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
-
-  if (article?.content && article.content.length > 200) {
-    return {
-      title: article.title ?? null,
-      content: article.content,
-      author: article.byline ?? null,
-      published: null,
-      image: null,
-      ttr: null,
-    };
-  }
-  return null;
-}
-
 /** Fallback: use Jina Reader API to extract JS-rendered pages */
 async function tryJinaReader(url: string): Promise<ExtractionResult | null> {
   const res = await fetch(`https://r.jina.ai/${url}`, {
@@ -544,9 +508,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fallbacks: run Google Cache, AMP, Jina, and Wayback in parallel — use first success
+    // Fallbacks: run AMP, Jina, and Wayback in parallel — use first success
     const fallbackResults = await Promise.allSettled([
-      tryGoogleCache(url),
       tryAmpCache(url),
       tryJinaReader(url),
       tryWaybackMachine(url),

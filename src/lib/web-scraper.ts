@@ -10,6 +10,7 @@ const FETCH_TIMEOUT = 15_000;
 const MAX_ARTICLES = 50;
 const MIN_LINK_TEXT_LENGTH = 10;
 const MIN_PATH_DEPTH = 2;
+const CNN_MIN_HEADLINE_LENGTH = 25;
 
 const BLOCKLIST_PATHS = [
   "/tag/",
@@ -238,6 +239,97 @@ function scrapeLinks(html: string, baseUrl: string): ScrapedLink[] {
   return results;
 }
 
+/** CNN-specific scraping: uses data-component-name="card" containers */
+function scrapeCnnCards(html: string, baseUrl: string): ScrapedLink[] {
+  const dom = new JSDOM(html, { url: baseUrl });
+  const doc = dom.window.document;
+
+  const cards = doc.querySelectorAll('[data-component-name="card"]');
+  const seen = new Set<string>();
+  const results: ScrapedLink[] = [];
+
+  for (const card of cards) {
+    const link = card.querySelector("a[href]");
+    if (!link) continue;
+
+    const href = link.getAttribute("href");
+    if (!href) continue;
+
+    const resolved = resolveUrl(href, baseUrl);
+    if (!resolved) continue;
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(resolved);
+    } catch {
+      continue;
+    }
+
+    // Only article links (must have date in path: /YYYY/MM/DD/)
+    const dateMatch = parsedUrl.pathname.match(
+      /\/(\d{4})\/(\d{2})\/(\d{2})\//,
+    );
+    if (!dateMatch) continue;
+
+    if (isBlocklisted(parsedUrl.pathname)) continue;
+
+    const cleanUrl = `${parsedUrl.origin}${parsedUrl.pathname.replace(/\/$/, "")}`;
+    if (seen.has(cleanUrl)) continue;
+
+    // Get headline from CNN's headline component
+    const headlineEl = card.querySelector(".container__headline-text");
+    const headline = (headlineEl?.textContent ?? "").trim();
+
+    // Skip cards that are just short topic labels (not real headlines)
+    if (headline.length < CNN_MIN_HEADLINE_LENGTH) continue;
+
+    seen.add(cleanUrl);
+
+    // Extract image from card's image component
+    const img = card.querySelector(
+      '[data-component-name="image"] img, img',
+    );
+    let imageUrl: string | null = null;
+    if (img && !isTrackingPixel(img)) {
+      const src = img.getAttribute("src") || img.getAttribute("data-src");
+      if (src) imageUrl = resolveUrl(src, baseUrl);
+    }
+
+    // Parse date from URL path
+    const [, year, month, day] = dateMatch;
+    const articleDate = new Date(`${year}-${month}-${day}T12:00:00Z`);
+    const hasValidDate = !isNaN(articleDate.getTime());
+
+    // Get description from any paragraph text in the card
+    const desc = extractDescription(card);
+
+    results.push({
+      url: cleanUrl,
+      title: headline,
+      date: hasValidDate
+        ? articleDate.toISOString()
+        : new Date().toISOString(),
+      hasTimestamp: hasValidDate,
+      imageUrl,
+      description: desc,
+    });
+
+    if (results.length >= MAX_ARTICLES) break;
+  }
+
+  dom.window.close();
+  return results;
+}
+
+function isCnnUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === "www.cnn.com" || host === "cnn.com";
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchHtml(url: string, timeoutMs = FETCH_TIMEOUT): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -270,7 +362,9 @@ export async function fetchWebSource(
   skipKeywordTags?: boolean,
 ): Promise<Article[]> {
   const html = await fetchHtml(source.url);
-  const links = scrapeLinks(html, source.url);
+  const links = isCnnUrl(source.url)
+    ? scrapeCnnCards(html, source.url)
+    : scrapeLinks(html, source.url);
 
   return links.map((link) => {
     const title = link.title;

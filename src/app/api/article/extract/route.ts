@@ -46,6 +46,7 @@ const CONTENT_SELECTORS = [
   ".article-body",
   ".article__body",
   ".article-content",
+  ".article__content",
   ".articleWrap",
   ".story-body",
   ".entry-content",
@@ -77,6 +78,9 @@ function cleanExtractedHtml(html: string): string {
     ".author-bio", ".author-info", ".author-card",
     ".breadcrumb", ".breadcrumbs",
     ".paywall", ".image-credit", ".photo-credit",
+    // CNN-specific metadata containers
+    "[class*='__metadata-wrapper']", "[class*='__metadata-container']",
+    "[class*='__metadata media']",
   ];
   for (const el of body.querySelectorAll(junkSelectors.join(", "))) {
     el.remove();

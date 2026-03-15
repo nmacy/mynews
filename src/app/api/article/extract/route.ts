@@ -12,12 +12,22 @@ export const dynamic = "force-dynamic";
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+const GOOGLEBOT_UA =
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+
 const FETCH_HEADERS: Record<string, string> = {
   "User-Agent": BROWSER_UA,
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache",
+};
+
+const GOOGLEBOT_HEADERS: Record<string, string> = {
+  "User-Agent": GOOGLEBOT_UA,
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
 };
 
 interface ExtractionResult {
@@ -32,9 +42,11 @@ interface ExtractionResult {
 /** CSS selectors commonly used for article body content, in priority order */
 const CONTENT_SELECTORS = [
   "[itemprop='articleBody']",
+  "#article-body",
   ".article-body",
   ".article__body",
   ".article-content",
+  ".articleWrap",
   ".story-body",
   ".entry-content",
   ".caas-body",
@@ -269,9 +281,9 @@ async function tryExtractus(url: string): Promise<ExtractionResult | null> {
 }
 
 /** Fetch HTML and try multiple DOM-based strategies, returning the best result */
-async function tryDomStrategies(url: string): Promise<ExtractionResult | null> {
+async function tryDomStrategies(url: string, headers: Record<string, string> = FETCH_HEADERS): Promise<ExtractionResult | null> {
   const res = await fetch(url, {
-    headers: FETCH_HEADERS,
+    headers,
     signal: AbortSignal.timeout(15000),
     redirect: "follow",
   });
@@ -486,9 +498,10 @@ export async function GET(request: NextRequest) {
       (r): r is ExtractionResult => r !== null
     );
 
+    // Clean all primary candidates and pick the best
+    let primaryBest: ExtractionResult | null = null;
+    let primaryTextLen = 0;
     if (results.length > 0) {
-      // Clean all candidates first, then pick the one with the most actual text
-      // (raw HTML length is unreliable — sidebars with many links can be longer)
       const cleaned = results.map((r) => ({
         ...r,
         cleanedContent: cleanExtractedHtml(r.content),
@@ -499,9 +512,10 @@ export async function GET(request: NextRequest) {
         return bText - aText;
       });
       const best = cleaned[0];
-      if (best.cleanedContent.replace(/<[^>]*>/g, "").trim().length >= 50) {
+      primaryTextLen = best.cleanedContent.replace(/<[^>]*>/g, "").trim().length;
+      if (primaryTextLen >= 50) {
         const meta = extractResult ?? best;
-        const result = {
+        primaryBest = {
           title: meta.title ?? best.title,
           content: best.cleanedContent,
           author: meta.author ?? best.author,
@@ -509,25 +523,43 @@ export async function GET(request: NextRequest) {
           image: meta.image ?? best.image,
           ttr: meta.ttr ?? best.ttr,
         };
-        setCachedExtraction(url, result).catch(() => {});
-        return NextResponse.json(result);
       }
     }
 
-    // Fallbacks: run AMP, Jina, and Wayback in parallel — use first success
+    // If primary result is good enough (>= 500 chars of text), return it immediately
+    if (primaryBest && primaryTextLen >= 500) {
+      setCachedExtraction(url, primaryBest).catch(() => {});
+      return NextResponse.json(primaryBest);
+    }
+
+    // Otherwise try fallbacks — they may find better content
     const fallbackResults = await Promise.allSettled([
+      tryDomStrategies(url, GOOGLEBOT_HEADERS),
       tryAmpCache(url),
       tryJinaReader(url),
       tryWaybackMachine(url),
     ]);
+
+    let fallbackBest: ExtractionResult | null = null;
+    let fallbackTextLen = 0;
     for (const settled of fallbackResults) {
       if (settled.status !== "fulfilled" || !settled.value) continue;
       const cleaned = cleanExtractedHtml(settled.value.content);
-      if (cleaned.replace(/<[^>]*>/g, "").trim().length >= 50) {
-        const result = { ...settled.value, content: cleaned };
-        setCachedExtraction(url, result).catch(() => {});
-        return NextResponse.json(result);
+      const textLen = cleaned.replace(/<[^>]*>/g, "").trim().length;
+      if (textLen > fallbackTextLen) {
+        fallbackTextLen = textLen;
+        fallbackBest = { ...settled.value, content: cleaned };
       }
+    }
+
+    // Return whichever result has more content
+    if (fallbackBest && fallbackTextLen > primaryTextLen) {
+      setCachedExtraction(url, fallbackBest).catch(() => {});
+      return NextResponse.json(fallbackBest);
+    }
+    if (primaryBest) {
+      setCachedExtraction(url, primaryBest).catch(() => {});
+      return NextResponse.json(primaryBest);
     }
 
     return NextResponse.json({ error: "Could not extract article" }, { status: 422 });

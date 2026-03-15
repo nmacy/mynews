@@ -29,8 +29,8 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "nyt-science", name: "NYT Science", url: "https://rss.nytimes.com/services/xml/rss/nyt/Science.xml", priority: 2, paywalled: true, category: "Major News" },
   { id: "nbc-news", name: "NBC News", url: "https://feeds.nbcnews.com/nbcnews/public/news", priority: 1, category: "Major News" },
   { id: "fox-news", name: "Fox News", url: "https://moxie.foxnews.com/google-publisher/latest.xml", priority: 2, category: "Major News" },
-  { id: "the-hill", name: "The Hill", url: "https://thehill.com/feed/", priority: 2, category: "Major News" },
-  { id: "axios", name: "Axios", url: "https://api.axios.com/feed/", priority: 2, category: "Major News" },
+  { id: "the-hill", name: "The Hill", url: "https://thehill.com/feed/", priority: 2, paywalled: true, category: "Major News" },
+  { id: "axios", name: "Axios", url: "https://api.axios.com/feed/", priority: 2, paywalled: true, category: "Major News" },
   { id: "politico", name: "Politico", url: "https://rss.politico.com/politics-news.xml", priority: 2, category: "Major News" },
   { id: "propublica", name: "ProPublica", url: "https://feeds.propublica.org/propublica/main", priority: 2, category: "Major News" },
   { id: "the-atlantic", name: "The Atlantic", url: "https://www.theatlantic.com/feed/all/", priority: 2, paywalled: true, category: "Major News" },
@@ -78,7 +78,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
 
   // ── Business ───────────────────────────────────────────────
   { id: "cnbc", name: "CNBC", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114", priority: 1, category: "Business" },
-  { id: "marketwatch", name: "MarketWatch", url: "http://feeds.marketwatch.com/marketwatch/topstories/", priority: 2, category: "Business" },
+  { id: "marketwatch", name: "MarketWatch", url: "http://feeds.marketwatch.com/marketwatch/topstories/", priority: 2, paywalled: true, category: "Business" },
   { id: "forbes", name: "Forbes", url: "https://www.forbes.com/innovation/feed2", priority: 2, paywalled: true, category: "Business" },
   { id: "business-insider", name: "Business Insider", url: "https://markets.businessinsider.com/rss/news", priority: 2, paywalled: true, category: "Business" },
   { id: "bloomberg", name: "Bloomberg", url: "https://feeds.bloomberg.com/markets/news.rss", priority: 1, paywalled: true, category: "Business" },
@@ -86,7 +86,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "financial-times", name: "Financial Times", url: "https://www.ft.com/?format=rss", priority: 1, paywalled: true, category: "Business" },
   { id: "washington-post", name: "Washington Post", url: "https://feeds.washingtonpost.com/rss/national", priority: 1, paywalled: true, category: "Business" },
   { id: "quartz", name: "Quartz", url: "https://qz.com/feed", priority: 2, category: "Business" },
-  { id: "fast-company", name: "Fast Company", url: "https://www.fastcompany.com/latest/rss", priority: 2, category: "Business" },
+  { id: "fast-company", name: "Fast Company", url: "https://www.fastcompany.com/latest/rss", priority: 2, paywalled: true, category: "Business" },
   { id: "inc", name: "Inc.", url: "https://www.inc.com/rss/", priority: 3, category: "Business" },
   { id: "entrepreneur", name: "Entrepreneur", url: "https://www.entrepreneur.com/latest.rss", priority: 3, category: "Business" },
   { id: "the-economist", name: "The Economist", url: "https://www.economist.com/latest/rss.xml", priority: 1, paywalled: true, category: "Business" },

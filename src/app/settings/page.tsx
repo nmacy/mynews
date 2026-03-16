@@ -24,6 +24,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { useTheme, type ThemePreference, type AccentId } from "@/components/ThemeProvider";
 import { ACCENT_PALETTES } from "@/config/accents";
 import { AiSettingsSection } from "@/components/settings/AiTaggerSection";
+import { RankingSection } from "@/components/settings/RankingSection";
 import { DefaultSourcesSection } from "@/components/settings/DefaultSourcesSection";
 import { CustomTagsSection } from "@/components/settings/CustomTagsSection";
 import { AdminUsersSection } from "@/components/settings/AdminUsersSection";
@@ -1446,6 +1447,8 @@ function AdminSettingsGroup() {
           <DefaultSourcesSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <AiSettingsSection />
+          <div style={{ borderTop: "1px solid var(--mn-border)" }} />
+          <RankingSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />
           <CustomTagsSection />
           <div style={{ borderTop: "1px solid var(--mn-border)" }} />

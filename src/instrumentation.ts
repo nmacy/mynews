@@ -31,6 +31,17 @@ export async function register() {
       } catch (err) {
         console.warn("[background-refresh] Auto-tagger failed:", err);
       }
+
+      // Probe new articles for extractability (50 per cycle)
+      try {
+        const { probeNewArticles } = await import("@/lib/extraction-probe");
+        const probed = await probeNewArticles(50);
+        if (probed > 0) {
+          console.log(`[background-refresh] Probed ${probed} articles for extractability`);
+        }
+      } catch (err) {
+        console.warn("[background-refresh] Extraction probe failed:", err);
+      }
     } catch (err) {
       consecutiveFailures++;
       console.error(`[background-refresh] Feed refresh failed (failure #${consecutiveFailures}):`, err);
@@ -118,9 +129,29 @@ export async function register() {
     console.error("[instrumentation] AI tag reset failed:", err);
   }
 
-  // Initial refresh (fire-and-forget, don't block server boot)
-  refresh();
+  // One-time: backfill extractable status from CachedExtraction data
+  try {
+    const { getServerConfig, setServerConfig } = await import("@/lib/server-config");
+    const done = await getServerConfig("extractableBackfilled");
+    if (done !== "true") {
+      const { prisma } = await import("@/lib/prisma");
+      const updated = await prisma.$executeRawUnsafe(`
+        UPDATE Article SET extractable = 1
+        WHERE url IN (SELECT url FROM CachedExtraction)
+          AND extractable IS NULL
+      `);
+      await setServerConfig("extractableBackfilled", "true");
+      console.log(`[instrumentation] Backfilled extractable=true for ${updated} articles from cache`);
+    }
+  } catch (err) {
+    console.error("[instrumentation] Extractable backfill failed:", err);
+  }
 
-  // Schedule recurring refreshes with dynamic interval
-  scheduleNext();
+  // Delay initial refresh so the server is responsive immediately.
+  // The DB already has persisted articles from prior runs — clients can
+  // read those while we fetch fresh RSS in the background.
+  setTimeout(() => {
+    refresh();
+    scheduleNext();
+  }, 15_000);
 }

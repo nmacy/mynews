@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY, isAiTaggingEnabled } from "@/lib/feeds";
 import { clearCache } from "@/lib/cache";
+import { getRankingConfig } from "@/lib/server-config";
 import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
@@ -28,11 +29,21 @@ function isValidSource(s: unknown): s is Source {
 export async function GET(request: NextRequest) {
   const sourceIdsParam = request.nextUrl.searchParams.get("sourceIds");
   const sourcesParam = request.nextUrl.searchParams.get("sources");
+  const tagParam = request.nextUrl.searchParams.get("tag");
 
   let articles;
   let cacheKey: string;
 
-  if (sourcesParam) {
+  if (tagParam) {
+    // Server-side tag filter — queries DB directly for articles with this tag.
+    // Returns up to 500 most recent articles matching the tag across all sources.
+    cacheKey = `articles:tag:${tagParam}`;
+    const { loadArticlesByTag } = await import("@/lib/article-db");
+    const { rankArticles } = await import("@/lib/ranker");
+    const raw = await loadArticlesByTag(tagParam, 500);
+    const rc = await getRankingConfig();
+    articles = rc.enabled ? rankArticles(raw, rc, []) : raw;
+  } else if (sourcesParam) {
     // Accept full source objects as JSON (for custom user-added sources)
     try {
       const parsed = JSON.parse(sourcesParam) as unknown[];
@@ -46,25 +57,42 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid sources param" }, { status: 400 });
     }
   } else if (sourceIdsParam) {
-    // Filter default sources by ID
-    const ids = new Set(sourceIdsParam.split(",").map((s) => s.trim()));
-    const allSources = await getSources();
-    const filtered = allSources.filter((s) => ids.has(s.id));
-    cacheKey = `articles:${filtered.map((s) => s.id).sort().join(",")}`;
-    articles = await getArticlesForSources(filtered);
+    // Load articles from DB by source IDs. For single/few sources (e.g. source
+    // page), load directly for full results. For many sources, cap at DB level
+    // to avoid loading thousands of articles.
+    const ids = sourceIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    cacheKey = `articles:${[...ids].sort().join(",")}`;
+    const { loadPersistedArticles } = await import("@/lib/article-db");
+    const { rankArticles } = await import("@/lib/ranker");
+    const dbLimit = ids.length <= 5 ? undefined : 500;
+    const raw = await loadPersistedArticles(ids, dbLimit);
+    const rc = await getRankingConfig();
+    articles = rc.enabled ? rankArticles(raw, rc, []) : raw;
   } else {
     cacheKey = "all-articles";
     articles = await getAllArticles();
   }
 
   const failedSources = getFailedSources(cacheKey);
+  const rankingConfig = await getRankingConfig();
+
+  console.log(`[feeds GET] Loaded ${articles.length} articles for cacheKey=${cacheKey.substring(0, 80)}`);
+
+  // Strip content field — not used on home page, saves ~60% payload
+  // Cap response to avoid multi-MB payloads that freeze the browser
+  const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "0", 10);
+  const maxArticles = limit > 0 ? limit : 500;
+  const capped = articles.slice(0, maxArticles);
+  const lightweight = capped.map(({ content, ...rest }) => ({ ...rest, content: "" }));
 
   return NextResponse.json({
-    count: articles.length,
-    articles,
+    count: lightweight.length,
+    total: articles.length,
+    articles: lightweight,
     ...(failedSources.length > 0 ? { failedSources } : {}),
+    ranking: rankingConfig,
   }, {
-    headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+    headers: { "Cache-Control": "private, no-cache" },
   });
 }
 
@@ -83,12 +111,18 @@ export async function POST(request: NextRequest) {
         const cacheKey = `articles:${safeSources.map((s) => s.id).sort().join(",")}`;
         const articles = await getArticlesForSources(safeSources);
         const failedSources = getFailedSources(cacheKey);
+        const postRankingConfig = await getRankingConfig();
+        const postLimit = typeof body.limit === "number" && body.limit > 0 ? body.limit : 500;
+        const postCapped = articles.slice(0, postLimit);
+        const postLightweight = postCapped.map(({ content, ...rest }) => ({ ...rest, content: "" }));
         return NextResponse.json({
-          count: articles.length,
-          articles,
+          count: postLightweight.length,
+          total: articles.length,
+          articles: postLightweight,
           ...(failedSources.length > 0 ? { failedSources } : {}),
+          ranking: postRankingConfig,
         }, {
-          headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+          headers: { "Cache-Control": "private, no-cache" },
         });
       }
     } catch {
@@ -189,11 +223,12 @@ export async function POST(request: NextRequest) {
                 apiKey,
                 model: stored.model,
               });
-              for (const [id, tags] of Object.entries(tagMap)) {
+              for (const [id, result] of Object.entries(tagMap)) {
                 const article = unique.find((a) => a.id === id);
                 if (article) {
-                  const merged = new Set([...(article.tags ?? []), ...tags]);
+                  const merged = new Set([...(article.tags ?? []), ...result.tags]);
                   article.tags = Array.from(merged);
+                  article.relevanceScore = result.score;
                   aiTagCount++;
                 }
               }

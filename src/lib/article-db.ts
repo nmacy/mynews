@@ -27,7 +27,7 @@ export async function persistArticles(articles: Article[]): Promise<void> {
     const values: unknown[] = [];
 
     for (const a of batch) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       values.push(
         a.id,
         a.url,
@@ -47,11 +47,12 @@ export async function persistArticles(articles: Article[]): Promise<void> {
         now.toISOString(),  // firstSeen
         now.toISOString(),  // lastSeen
         exp.toISOString(),  // expiresAt
+        a.relevanceScore ?? 5,
       );
     }
 
     const sql = `
-      INSERT INTO Article (id, url, title, description, content, imageUrl, publishedAt, sourceId, sourceName, categories, tags, priority, paywalled, aiTagged, hasTimestamp, firstSeen, lastSeen, expiresAt)
+      INSERT INTO Article (id, url, title, description, content, imageUrl, publishedAt, sourceId, sourceName, categories, tags, priority, paywalled, aiTagged, hasTimestamp, firstSeen, lastSeen, expiresAt, relevanceScore)
       VALUES ${placeholders.join(", ")}
       ON CONFLICT(url) DO UPDATE SET
         lastSeen = excluded.lastSeen,
@@ -60,7 +61,8 @@ export async function persistArticles(articles: Article[]): Promise<void> {
         hasTimestamp = CASE WHEN excluded.hasTimestamp = 1 THEN 1 ELSE Article.hasTimestamp END,
         tags = CASE WHEN Article.aiTagged = 1 THEN Article.tags WHEN LENGTH(excluded.tags) > 4 THEN excluded.tags ELSE Article.tags END,
         imageUrl = CASE WHEN excluded.imageUrl IS NOT NULL THEN excluded.imageUrl ELSE Article.imageUrl END,
-        aiTagged = CASE WHEN excluded.aiTagged = 1 THEN 1 ELSE Article.aiTagged END
+        aiTagged = CASE WHEN excluded.aiTagged = 1 THEN 1 ELSE Article.aiTagged END,
+        relevanceScore = CASE WHEN excluded.relevanceScore != 5 THEN excluded.relevanceScore ELSE Article.relevanceScore END
     `;
 
     await prisma.$executeRawUnsafe(sql, ...values);
@@ -83,7 +85,17 @@ export async function loadPersistedArticles(sourceIds: string[], limit?: number)
     ...(limit ? { take: limit } : {}),
   });
 
-  return rows.map((r) => ({
+  return rows.map(rowToArticle);
+}
+
+function rowToArticle(r: {
+  id: string; title: string; description: string; content: string;
+  url: string; imageUrl: string | null; publishedAt: Date;
+  sourceId: string; sourceName: string; categories: string; tags: string;
+  priority: number; paywalled: boolean; relevanceScore: number;
+  extractable: boolean | null; aiTagged: boolean; hasTimestamp: boolean;
+}): Article {
+  return {
     id: r.id,
     title: r.title,
     description: r.description,
@@ -96,8 +108,65 @@ export async function loadPersistedArticles(sourceIds: string[], limit?: number)
     tags: JSON.parse(r.tags) as string[],
     priority: r.priority,
     paywalled: r.paywalled,
+    relevanceScore: r.relevanceScore,
+    _extractable: r.extractable,
     _aiTagged: r.aiTagged || undefined,
     _hasTimestamp: r.hasTimestamp,
+  };
+}
+
+/**
+ * Update the extractable status for an article by URL.
+ */
+export async function setArticleExtractable(url: string, extractable: boolean): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    "UPDATE Article SET extractable = ? WHERE url = ?",
+    extractable ? 1 : 0,
+    url
+  );
+}
+
+/**
+ * Load non-expired articles that contain a specific tag, across all sources.
+ * Uses SQL LIKE on the JSON tags column for server-side filtering.
+ */
+export async function loadArticlesByTag(tag: string, limit = 500): Promise<Article[]> {
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    id: string; title: string; description: string; content: string;
+    url: string; imageUrl: string | null; publishedAt: string;
+    sourceId: string; sourceName: string; categories: string; tags: string;
+    priority: number; paywalled: number; relevanceScore: number;
+    extractable: number | null; aiTagged: number; hasTimestamp: number;
+  }>>(
+    `SELECT id, title, description, content, url, imageUrl, publishedAt,
+            sourceId, sourceName, categories, tags, priority, paywalled,
+            relevanceScore, extractable, aiTagged, hasTimestamp
+     FROM Article
+     WHERE expiresAt > datetime('now')
+       AND tags LIKE ?
+     ORDER BY publishedAt DESC
+     LIMIT ?`,
+    `%"${tag}"%`,
+    limit
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    content: r.content,
+    url: r.url,
+    imageUrl: r.imageUrl,
+    publishedAt: r.publishedAt,
+    source: { id: r.sourceId, name: r.sourceName },
+    categories: JSON.parse(r.categories) as string[],
+    tags: JSON.parse(r.tags) as string[],
+    priority: r.priority,
+    paywalled: !!r.paywalled,
+    relevanceScore: r.relevanceScore,
+    _extractable: r.extractable === null ? null : !!r.extractable,
+    _aiTagged: !!r.aiTagged || undefined,
+    _hasTimestamp: !!r.hasTimestamp,
   }));
 }
 
@@ -121,11 +190,10 @@ export async function updateArticleImages(
 }
 
 /**
- * Update only tags and aiTagged for specific articles by ID.
- * More efficient than persistArticles() which does a full upsert.
+ * Update tags, aiTagged, and optionally relevanceScore for specific articles by ID.
  */
-export async function updateArticleTags(
-  updates: { id: string; tags: string[] }[]
+export async function updateArticleAiData(
+  updates: { id: string; tags: string[]; relevanceScore?: number }[]
 ): Promise<void> {
   if (updates.length === 0) return;
 
@@ -133,11 +201,18 @@ export async function updateArticleTags(
     updates.map((u) =>
       prisma.article.update({
         where: { id: u.id },
-        data: { tags: JSON.stringify(u.tags), aiTagged: true },
+        data: {
+          tags: JSON.stringify(u.tags),
+          aiTagged: true,
+          ...(u.relevanceScore !== undefined ? { relevanceScore: u.relevanceScore } : {}),
+        },
       })
     )
   );
 }
+
+/** @deprecated Use updateArticleAiData instead */
+export const updateArticleTags = updateArticleAiData;
 
 /**
  * Delete all rows where expiresAt < now.

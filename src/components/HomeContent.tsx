@@ -9,6 +9,7 @@ import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
+import { rankArticles, type RankingConfig, DEFAULT_RANKING_CONFIG } from "@/lib/ranker";
 import type { Article } from "@/types";
 
 export function ArticleSkeleton() {
@@ -48,27 +49,35 @@ export function ArticleSkeleton() {
 interface HomeContentProps {
   initialArticles: Article[];
   initialSourcesKey: string;
+  initialRankingConfig?: RankingConfig;
 }
 
-export function HomeContent({ initialArticles, initialSourcesKey }: HomeContentProps) {
+export function HomeContent({ initialArticles, initialSourcesKey, initialRankingConfig }: HomeContentProps) {
   const { config } = useConfig();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
+
+  // When the source bar filters to specific sources, fetch just those from the API
+  // instead of filtering the capped home page dataset
+  const sourceBarFilter = searchParams.get("sources") || "";
 
   const sourcesKey = useMemo(
     () => config.sources.map((s) => s.id).sort().join(","),
     [config.sources]
   );
 
+  // Combine user sources key + source bar filter into a single fetch key
+  const fetchKey = sourceBarFilter ? `${sourcesKey}:filter:${sourceBarFilter}` : sourcesKey;
+
   // Use server-fetched articles if sources match defaults, otherwise need client fetch
-  const hasInitialData = initialArticles.length > 0 && sourcesKey === initialSourcesKey;
+  const hasInitialData = initialArticles.length > 0 && sourcesKey === initialSourcesKey && !sourceBarFilter;
   const [articles, setArticles] = useState<Article[]>(hasInitialData ? initialArticles : []);
   const [loading, setLoading] = useState(!hasInitialData);
   const [failedSources, setFailedSources] = useState<{ name: string; url: string }[]>([]);
 
   useEffect(() => {
     // Skip fetch if we already have server-rendered data for this sources key
-    if (sourcesKey === initialSourcesKey && initialArticles.length > 0) {
+    if (!sourceBarFilter && sourcesKey === initialSourcesKey && initialArticles.length > 0) {
       setArticles(initialArticles);
       setLoading(false);
       return;
@@ -83,28 +92,51 @@ export function HomeContent({ initialArticles, initialSourcesKey }: HomeContentP
     const controller = new AbortController();
     setLoading(true);
 
-    fetch("/api/feeds", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources: config.sources }),
-      signal: controller.signal,
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        setArticles(data.articles as Article[]);
-        setFailedSources(data.failedSources ?? []);
+    if (sourceBarFilter) {
+      // Source bar is active — fetch just those source IDs directly from DB
+      fetch(`/api/feeds?sourceIds=${encodeURIComponent(sourceBarFilter)}`, {
+        signal: controller.signal,
+        cache: "no-store",
       })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error(err);
+        .then((res) => res.json())
+        .then((data) => {
+          setArticles(data.articles as Article[]);
+          setFailedSources(data.failedSources ?? []);
+          if (data.ranking) setRankingConfig(data.ranking);
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          console.error(err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    } else {
+      // No filter — fetch all user sources (capped by API)
+      fetch("/api/feeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources: config.sources }),
+        signal: controller.signal,
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
+        .then((res) => res.json())
+        .then((data) => {
+          setArticles(data.articles as Article[]);
+          setFailedSources(data.failedSources ?? []);
+          if (data.ranking) setRankingConfig(data.ranking);
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          console.error(err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }
 
     return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourcesKey]);
+  }, [fetchKey]);
 
   const [initialVisible, setInitialVisible] = useState<number | undefined>(undefined);
 
@@ -125,15 +157,34 @@ export function HomeContent({ initialArticles, initialSourcesKey }: HomeContentP
 
   const { articles: taggedArticles, isTagging, error: aiError } = useAiTagger(articles);
 
+  // Client-side ranking with tag interest boost (per-user featuredTags)
+  const [rankingConfig, setRankingConfig] = useState<RankingConfig>(initialRankingConfig ?? DEFAULT_RANKING_CONFIG);
+
+  const rankedArticles = useMemo(() => {
+    if (!rankingConfig.enabled || !rankingConfig.layerTagInterest) return taggedArticles;
+    const featuredTags = config.featuredTags ?? [];
+    if (featuredTags.length === 0) return taggedArticles;
+    // Apply only the tag interest layer client-side, server already ranked with other layers
+    const copy = taggedArticles.map((a) => ({ ...a }));
+    for (const article of copy) {
+      const hasMatch = article.tags.some((t) => featuredTags.includes(t));
+      if (hasMatch && article._rankScore !== undefined) {
+        article._rankScore *= 1.3;
+      }
+    }
+    copy.sort((a, b) => (b._rankScore ?? 0) - (a._rankScore ?? 0));
+    return copy;
+  }, [taggedArticles, rankingConfig, config.featuredTags]);
+
   const searchFiltered = useMemo(() => {
-    if (!searchQuery) return taggedArticles;
+    if (!searchQuery) return rankedArticles;
     const q = searchQuery.toLowerCase();
-    return taggedArticles.filter(
+    return rankedArticles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
         a.description.toLowerCase().includes(q)
     );
-  }, [taggedArticles, searchQuery]);
+  }, [rankedArticles, searchQuery]);
 
   const { filtered, activeFilters, hasActiveFilters } =
     useArticleFilters(searchFiltered);
@@ -183,8 +234,8 @@ export function HomeContent({ initialArticles, initialSourcesKey }: HomeContentP
         </div>
       ) : (
         <>
-          {hero && <HeroArticle article={hero} />}
-          <ArticleGrid articles={grid} initialVisible={initialVisible} />
+          {hero && <HeroArticle article={hero} debugScores={rankingConfig.debugScores} />}
+          <ArticleGrid articles={grid} initialVisible={initialVisible} debugScores={rankingConfig.debugScores} />
         </>
       )}
     </>

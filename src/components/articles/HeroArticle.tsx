@@ -10,14 +10,14 @@ import { TimeAgo } from "@/components/ui/TimeAgo";
 import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
 
-export function HeroArticle({ article }: { article: Article }) {
+export function HeroArticle({ article, debugScores }: { article: Article; debugScores?: boolean }) {
   const router = useRouter();
 
   return (
     <>
       {/* Mobile: render as a regular card */}
       <div className="sm:hidden mb-6">
-        <ArticleCard article={article} />
+        <ArticleCard article={article} debugScores={debugScores} />
       </div>
 
       {/* Desktop: full-width hero */}
@@ -26,6 +26,17 @@ export function HeroArticle({ article }: { article: Article }) {
         onClick={() => { sessionStorage.setItem("mn-scroll-y", String(window.scrollY)); storeArticle(article); }}
         className="hidden sm:block relative w-full aspect-[3/1] rounded-2xl overflow-hidden group mb-8"
       >
+        {debugScores && article._rankScore !== undefined && (
+          <div
+            className="absolute top-3 right-3 z-10 px-2 py-1 rounded-md text-xs font-mono font-bold shadow-md"
+            style={{
+              backgroundColor: "rgba(0, 0, 0, 0.75)",
+              color: "#00ff88",
+            }}
+          >
+            {article._rankScore.toFixed(3)}
+          </div>
+        )}
         <ArticleImage
           src={article.imageUrl}
           alt={article.title}

@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -10,6 +9,7 @@ import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
 import { useTagMap } from "@/components/TagProvider";
 import type { Article } from "@/types";
+import { type RankingConfig, DEFAULT_RANKING_CONFIG } from "@/lib/ranker";
 
 function ArticleSkeleton() {
   return (
@@ -36,42 +36,41 @@ function ArticleSkeleton() {
 
 function TagContent() {
   const { slug } = useParams<{ slug: string }>();
-  const { config } = useConfig();
   const tagMap = useTagMap();
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rankingConfig, setRankingConfig] = useState<RankingConfig>(DEFAULT_RANKING_CONFIG);
 
   const tag = tagMap.get(slug);
 
-  const sourcesKey = useMemo(
-    () => config.sources.map((s) => s.id).sort().join(","),
-    [config.sources]
-  );
-
+  // Fetch articles for this specific tag — server-side DB filter returns
+  // up to 500 most recent articles with this tag across all sources.
   useEffect(() => {
     if (!slug) return;
 
-    if (config.sources.length === 0) {
-      setArticles([]);
-      setLoading(false);
-      return;
-    }
-
+    const controller = new AbortController();
     setLoading(true);
 
-    fetch("/api/feeds", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources: config.sources }),
+    fetch(`/api/feeds?tag=${encodeURIComponent(slug)}`, {
+      signal: controller.signal,
+      cache: "no-store",
     })
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles as Article[]);
+        if (data.ranking) setRankingConfig(data.ranking);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, sourcesKey]);
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error(err);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [slug]);
 
   useEffect(() => {
     if (loading) return;
@@ -86,14 +85,8 @@ function TagContent() {
 
   const { articles: taggedArticles } = useAiTagger(articles);
 
-  // Filter by the tag slug
-  const tagFiltered = useMemo(
-    () => taggedArticles.filter((a) => (a.tags ?? []).includes(slug)),
-    [taggedArticles, slug]
-  );
-
   const { filtered, activeFilters, hasActiveFilters } =
-    useArticleFilters(tagFiltered);
+    useArticleFilters(taggedArticles);
 
   if (!tag) {
     return (
@@ -131,8 +124,8 @@ function TagContent() {
         </div>
       ) : (
         <>
-          {hero && <HeroArticle article={hero} />}
-          <ArticleGrid articles={grid} />
+          {hero && <HeroArticle article={hero} debugScores={rankingConfig.debugScores} />}
+          <ArticleGrid articles={grid} debugScores={rankingConfig.debugScores} />
         </>
       )}
     </>

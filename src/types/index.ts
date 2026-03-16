@@ -39,10 +39,17 @@ export interface Article {
   tags: string[];
   priority: number;
   paywalled: boolean;
+  relevanceScore: number;
   /** Debug flag — true when tags came from AI, false/undefined for keyword tags */
   _aiTagged?: boolean;
   /** Whether the source provided a real timestamp (false = we used pull time) */
   _hasTimestamp?: boolean;
+  /** Whether this article can be fully extracted (null = untested) */
+  _extractable?: boolean | null;
+  /** Computed rank score (transient, not persisted) */
+  _rankScore?: number;
+  /** Number of deduplicated similar articles (transient) */
+  _dedupCount?: number;
 }
 
 export type AiProvider = "anthropic" | "openai" | "gemini" | "openrouter";

@@ -9,16 +9,27 @@ import { TimeAgo } from "@/components/ui/TimeAgo";
 import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
 
-export function ArticleCard({ article }: { article: Article }) {
+export function ArticleCard({ article, debugScores }: { article: Article; debugScores?: boolean }) {
   const router = useRouter();
 
   return (
     <Link
       href={`/article/${article.id}`}
       onClick={() => { sessionStorage.setItem("mn-scroll-y", String(window.scrollY)); storeArticle(article); }}
-      className="block rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+      className="block relative rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
       style={{ backgroundColor: "var(--mn-card)" }}
     >
+      {debugScores && article._rankScore !== undefined && (
+        <div
+          className="absolute top-2 right-2 z-10 px-2 py-1 rounded-md text-xs font-mono font-bold shadow-md"
+          style={{
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            color: "#00ff88",
+          }}
+        >
+          {article._rankScore.toFixed(3)}
+        </div>
+      )}
       <div className="relative aspect-[16/9]">
         <ArticleImage
           src={article.imageUrl}
@@ -65,8 +76,16 @@ export function ArticleCard({ article }: { article: Article }) {
             ))}
           </div>
         )}
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-2">
           <TimeAgo date={article.publishedAt} />
+          {article._dedupCount && article._dedupCount > 0 && (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: "var(--mn-border)", color: "var(--mn-muted)" }}
+            >
+              +{article._dedupCount} similar
+            </span>
+          )}
         </div>
       </div>
     </Link>

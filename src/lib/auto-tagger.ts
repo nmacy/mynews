@@ -3,7 +3,7 @@ import { decrypt } from "@/lib/encryption";
 import { tagArticlesWithAi } from "@/lib/ai-tagger";
 import { discoverNewTags } from "@/lib/ai-tag-discovery";
 import { getAllTagDefinitions, getNextAvailableColor } from "@/lib/custom-tags";
-import { updateArticleTags } from "@/lib/article-db";
+import { updateArticleAiData } from "@/lib/article-db";
 import { setCache } from "@/lib/cache";
 import type { Article, AiProvider } from "@/types";
 
@@ -65,7 +65,7 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
 
   const allTags = await getAllTagDefinitions();
   const tagList = allTags.map((t) => ({ slug: t.slug, label: t.label }));
-  const pendingMutations = new Map<string, string[]>();
+  const pendingMutations = new Map<string, { tags: string[]; score: number }>();
 
   for (let i = 0; i < untagged.length; i += BATCH_SIZE) {
     const batch = untagged.slice(i, i + BATCH_SIZE);
@@ -86,10 +86,10 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
 
       let tagged = 0;
       for (const article of batch) {
-        const aiTags = tagMap[article.id];
-        if (aiTags && aiTags.length > 0) {
-          const merged = Array.from(new Set([...article.tags, ...aiTags]));
-          pendingMutations.set(article.id, merged);
+        const result = tagMap[article.id];
+        if (result && result.tags.length > 0) {
+          const merged = Array.from(new Set([...article.tags, ...result.tags]));
+          pendingMutations.set(article.id, { tags: merged, score: result.score });
           tagged++;
         }
       }
@@ -102,15 +102,20 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
 
   // Persist tag updates to DB first, then apply to in-memory articles
   if (pendingMutations.size > 0) {
-    const dbUpdates = Array.from(pendingMutations, ([id, tags]) => ({ id, tags }));
+    const dbUpdates = Array.from(pendingMutations, ([id, { tags, score }]) => ({
+      id,
+      tags,
+      relevanceScore: score,
+    }));
     try {
-      await updateArticleTags(dbUpdates);
+      await updateArticleAiData(dbUpdates);
 
       // DB succeeded — now apply mutations to in-memory articles and update cache
       for (const article of articles) {
-        const merged = pendingMutations.get(article.id);
-        if (merged) {
-          article.tags = merged;
+        const mutation = pendingMutations.get(article.id);
+        if (mutation) {
+          article.tags = mutation.tags;
+          article.relevanceScore = mutation.score;
           article._aiTagged = true;
         }
       }

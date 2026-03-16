@@ -116,14 +116,21 @@ export async function POST(request: Request) {
     const allTagDefs = await getAllTagDefinitions();
     const allTags = allTagDefs.map((t) => ({ slug: t.slug, label: t.label }));
 
-    const tags = await tagArticlesWithAi({
+    const results = await tagArticlesWithAi({
       articles: sanitized,
       allTags,
       provider: provider as AiProvider,
       apiKey,
       model,
     });
-    return NextResponse.json({ tags });
+    // Return tags as string[] for backward compat, scores separately
+    const tags: Record<string, string[]> = {};
+    const scores: Record<string, number> = {};
+    for (const [id, result] of Object.entries(results)) {
+      tags[id] = result.tags;
+      scores[id] = result.score;
+    }
+    return NextResponse.json({ tags, scores });
   } catch (err) {
     console.error("[ai-tagger]", err);
     return NextResponse.json({ tags: {}, error: "AI tagging failed" }, { status: 500 });

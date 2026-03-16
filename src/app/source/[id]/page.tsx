@@ -47,40 +47,43 @@ export default function SourcePage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Look up source metadata from user config; may be undefined if source
+  // isn't in the user's list (e.g. navigated via article card from defaults)
   const source = allSources.find((s) => s.id === id);
 
-  // Stable reference: only re-fetch when the source ID or URL changes, not
-  // when ConfigProvider re-renders allSources with a new array reference
-  const sourceId = source?.id;
-  const sourceUrl = source?.url;
-
   useEffect(() => {
-    if (!source) {
+    if (!id) {
       setLoading(false);
       return;
     }
 
     const controller = new AbortController();
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set("sources", JSON.stringify([source]));
 
-    fetch(`/api/feeds?${params}`, { signal: controller.signal })
+    // Always fetch by sourceIds — works whether or not the source is in
+    // the user's config. The API reads from the DB which has all sources.
+    fetch(`/api/feeds?sourceIds=${encodeURIComponent(id)}`, { signal: controller.signal, cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
+        console.log(`[source-page] Fetched ${data.count} articles (total: ${data.total}) for source ${id}`);
         setArticles(data.articles as Article[]);
       })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error(err);
+        if (err instanceof DOMException && err.name === "AbortError") {
+          console.log(`[source-page] Fetch aborted for ${id}`);
+          return;
+        }
+        console.error("[source-page] Fetch error:", err);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => controller.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, sourceUrl]);
+    return () => {
+      console.log(`[source-page] Cleanup: aborting fetch for ${id}`);
+      controller.abort();
+    };
+  }, [id]);
 
   useEffect(() => {
     if (loading) return;
@@ -95,18 +98,23 @@ export default function SourcePage() {
 
   const { articles: taggedArticles } = useAiTagger(articles);
 
-  if (!source) {
+  if (loading) return <SourceSkeleton />;
+
+  // Derive source info from config or from the fetched articles
+  const sourceName = source?.name ?? taggedArticles[0]?.source.name ?? id;
+  const sourceUrl = source?.url;
+  const isPaywalled = source?.paywalled ?? taggedArticles[0]?.paywalled;
+
+  if (taggedArticles.length === 0) {
     return (
       <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
-        <p className="text-lg">Source not found</p>
+        <p className="text-lg">No articles found for this source</p>
         <Link href="/" className="text-sm mt-2 inline-block hover:underline" style={{ color: "var(--mn-link)" }}>
           Back to home
         </Link>
       </div>
     );
   }
-
-  if (loading) return <SourceSkeleton />;
 
   const hero = taggedArticles[0];
   const rest = taggedArticles.slice(1);
@@ -134,11 +142,13 @@ export default function SourcePage() {
           </svg>
           Back to home
         </Link>
-        <h1 className="text-2xl font-bold">{source.name}</h1>
-        <p className="text-sm mt-1 break-all" style={{ color: "var(--mn-muted)" }}>
-          {source.url}
-        </p>
-        {source.paywalled && (
+        <h1 className="text-2xl font-bold">{sourceName}</h1>
+        {sourceUrl && (
+          <p className="text-sm mt-1 break-all" style={{ color: "var(--mn-muted)" }}>
+            {sourceUrl}
+          </p>
+        )}
+        {isPaywalled && (
           <div className="mt-3">
             <PaywallBadge />
           </div>

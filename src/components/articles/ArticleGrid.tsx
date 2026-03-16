@@ -9,9 +9,11 @@ const PAGE_SIZE = 30;
 export function ArticleGrid({
   articles,
   initialVisible,
+  debugScores,
 }: {
   articles: Article[];
   initialVisible?: number;
+  debugScores?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(
     initialVisible ? Math.min(initialVisible, articles.length) : Math.min(PAGE_SIZE, articles.length)
@@ -61,7 +63,7 @@ export function ArticleGrid({
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {visible.map((article) => (
-          <ArticleCard key={article.id} article={article} />
+          <ArticleCard key={article.id} article={article} debugScores={debugScores} />
         ))}
       </div>
       {visibleCount < articles.length && (

@@ -530,9 +530,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Track extraction result on the Article record
+    const markExtractable = (success: boolean) => {
+      import("@/lib/article-db")
+        .then(({ setArticleExtractable }) => setArticleExtractable(url, success))
+        .catch(() => {});
+    };
+
     // If primary result is good enough (>= 500 chars of text), return it immediately
     if (primaryBest && primaryTextLen >= 500) {
       setCachedExtraction(url, primaryBest).catch(() => {});
+      markExtractable(true);
       return NextResponse.json(primaryBest);
     }
 
@@ -559,16 +567,23 @@ export async function GET(request: NextRequest) {
     // Return whichever result has more content
     if (fallbackBest && fallbackTextLen > primaryTextLen) {
       setCachedExtraction(url, fallbackBest).catch(() => {});
+      markExtractable(true);
       return NextResponse.json(fallbackBest);
     }
     if (primaryBest) {
       setCachedExtraction(url, primaryBest).catch(() => {});
+      markExtractable(true);
       return NextResponse.json(primaryBest);
     }
 
+    markExtractable(false);
     return NextResponse.json({ error: "Could not extract article" }, { status: 422 });
   } catch (error) {
     console.error("Article extraction failed:", error);
+    // Mark as non-extractable on hard failure too
+    import("@/lib/article-db")
+      .then(({ setArticleExtractable }) => setArticleExtractable(url, false))
+      .catch(() => {});
     return NextResponse.json({ error: "Extraction failed" }, { status: 500 });
   }
 }

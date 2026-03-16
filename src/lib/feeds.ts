@@ -10,6 +10,8 @@ import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
 import { fetchSitemapSource } from "./sitemap-parser";
 import { prisma } from "./prisma";
+import { rankArticles } from "./ranker";
+import { getRankingConfig } from "./server-config";
 import type { Article, Source, SourcesConfig } from "@/types";
 
 const config = sourcesConfig as SourcesConfig;
@@ -151,6 +153,7 @@ export async function fetchSource(
         tags: skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags),
         priority: source.priority,
         paywalled: source.paywalled ?? false,
+        relevanceScore: 5,
         _hasTimestamp: hasTimestamp,
       });
     }
@@ -224,23 +227,39 @@ function sortArticles(articles: Article[]): void {
   });
 }
 
+/** Apply ranking if enabled, otherwise fall back to timestamp sort */
+async function sortArticlesWithRanking(articles: Article[]): Promise<Article[]> {
+  const config = await getRankingConfig();
+  if (!config.enabled) {
+    sortArticles(articles);
+    return articles;
+  }
+  // Tag interest boost is applied client-side (per-user), so pass empty here
+  return rankArticles(articles, config, []);
+}
+
 // ─── Read path: DB is the single source of truth ───────────────────────────
 
 /**
  * Load articles for the given source IDs from the database.
  * Uses a short-lived in-memory cache to avoid redundant DB reads.
  */
+// Cap DB reads — the API response caps at 500 anyway, so loading thousands
+// of articles just to discard most of them is wasteful. Load 1000 to give
+// ranking enough headroom to find the best 500.
+const MAX_ARTICLES_DB = 1000;
+
 async function loadArticlesFromDb(sourceIds: string[]): Promise<Article[]> {
   const cacheKey = DB_READ_CACHE_PREFIX + sourceIds.sort().join(",");
   const cached = getCached<Article[]>(cacheKey);
   if (cached) return cached;
 
-  const articles = await loadPersistedArticles(sourceIds);
-  sortArticles(articles);
+  const articles = await loadPersistedArticles(sourceIds, MAX_ARTICLES_DB);
+  const sorted = await sortArticlesWithRanking(articles);
 
-  setCache(cacheKey, articles, DB_READ_CACHE_TTL_MS);
-  fillOgImagesInBackground(articles);
-  return articles;
+  setCache(cacheKey, sorted, DB_READ_CACHE_TTL_MS);
+  fillOgImagesInBackground(sorted);
+  return sorted;
 }
 
 /**
@@ -349,11 +368,42 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
   // Invalidate DB read caches so next request picks up new articles
   invalidateArticleCaches();
 
-  // Carry over DB fields (timestamps, AI tags, images) for the returned articles
+  // Carry over DB fields (timestamps, AI tags, images) for the returned articles.
+  // Only load articles we actually need to merge — use the URLs from the fresh fetch
+  // plus a limited set of DB-only articles, instead of loading all 14K+ articles.
   try {
-    const sourceIds = sources.map((s) => s.id);
-    const persisted = await loadPersistedArticles(sourceIds);
-    const dbMap = new Map(persisted.map((a) => [a.url, a]));
+    const { prisma: db } = await import("./prisma");
+    const freshUrls = unique.map((a) => a.url);
+
+    // Batch lookup: only fetch DB rows matching the fresh articles' URLs
+    const BATCH = 500;
+    const dbMap = new Map<string, Article>();
+    for (let i = 0; i < freshUrls.length; i += BATCH) {
+      const batch = freshUrls.slice(i, i + BATCH);
+      const rows = await db.article.findMany({
+        where: { url: { in: batch } },
+      });
+      for (const r of rows) {
+        dbMap.set(r.url, {
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          content: r.content,
+          url: r.url,
+          imageUrl: r.imageUrl,
+          publishedAt: r.publishedAt.toISOString(),
+          source: { id: r.sourceId, name: r.sourceName },
+          categories: JSON.parse(r.categories) as string[],
+          tags: JSON.parse(r.tags) as string[],
+          priority: r.priority,
+          paywalled: r.paywalled,
+          relevanceScore: r.relevanceScore,
+          _aiTagged: r.aiTagged || undefined,
+          _hasTimestamp: r.hasTimestamp,
+        });
+      }
+    }
+
     for (const article of unique) {
       const dbArticle = dbMap.get(article.url);
       if (!dbArticle) continue;
@@ -368,10 +418,13 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
         article.imageUrl = dbArticle.imageUrl;
       }
     }
-    // Include DB-only articles (rotated out of RSS but still persisted)
+
+    // Include DB-only articles (not in current RSS but still persisted), capped
+    const sourceIds = sources.map((s) => s.id);
     const rssUrls = new Set(unique.map((a) => a.url));
-    const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
-    unique.push(...dbOnly);
+    const dbOnly = await loadPersistedArticles(sourceIds, 500);
+    const extra = dbOnly.filter((a) => !rssUrls.has(a.url));
+    unique.push(...extra);
   } catch (err) {
     console.warn("[article-db] DB load for merge failed:", err);
   }

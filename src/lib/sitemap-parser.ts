@@ -73,6 +73,7 @@ export async function fetchSitemapSource(
       tags: skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
+      relevanceScore: 5,
       _hasTimestamp: hasTimestamp,
     });
   }

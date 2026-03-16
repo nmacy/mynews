@@ -110,8 +110,10 @@ model Article {
   categories  String   @default("[]")
   tags        String   @default("[]")
   priority    Int      @default(2)
-  paywalled   Boolean  @default(false)
-  aiTagged    Boolean  @default(false)
+  paywalled      Boolean  @default(false)
+  aiTagged       Boolean  @default(false)
+  relevanceScore Int      @default(5)
+  extractable    Boolean?
   hasTimestamp Boolean  @default(true)
   firstSeen   DateTime @default(now())
   lastSeen    DateTime @default(now())

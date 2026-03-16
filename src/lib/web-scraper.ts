@@ -382,6 +382,7 @@ export async function fetchWebSource(
       tags: skipKeywordTags ? [] : assignTags({ title, description }, extraTags),
       priority: source.priority,
       paywalled: source.paywalled ?? false,
+      relevanceScore: 5,
       _hasTimestamp: link.hasTimestamp,
     };
   });

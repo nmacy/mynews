@@ -1,24 +1,21 @@
 import { Suspense } from "react";
 import { HomeContent, ArticleSkeleton } from "@/components/HomeContent";
-import { getSources, getArticlesForSources } from "@/lib/feeds";
-import type { Article } from "@/types";
+import { getRankingConfig } from "@/lib/server-config";
 
 export default async function HomePage() {
-  let initialArticles: Article[] = [];
-  let initialSourcesKey = "";
+  let initialRankingConfig;
   try {
-    const sources = await getSources();
-    initialArticles = await getArticlesForSources(sources);
-    initialSourcesKey = sources.map((s) => s.id).sort().join(",");
+    initialRankingConfig = await getRankingConfig();
   } catch {
-    // Fall through with empty — client will fetch on mount
+    // Fall through — client will get it from feeds response
   }
 
   return (
     <Suspense fallback={<ArticleSkeleton />}>
       <HomeContent
-        initialArticles={initialArticles}
-        initialSourcesKey={initialSourcesKey}
+        initialArticles={[]}
+        initialSourcesKey=""
+        initialRankingConfig={initialRankingConfig}
       />
     </Suspense>
   );

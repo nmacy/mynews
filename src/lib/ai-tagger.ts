@@ -25,30 +25,59 @@ Rules:
 - Prefer specific tags over broad ones. For example, use "ai" instead of "technology" if the article is specifically about AI. Only use "technology" if the article is broadly about the tech industry itself.
 - When in doubt, fewer tags are better. An article with 1 accurate tag is better than 3 loosely-related tags.
 
+Also assign a relevance score from 1-10 for each article:
+- 10: Major breaking news with broad impact
+- 7-9: Important developments, significant announcements
+- 4-6: Standard news coverage, routine updates
+- 1-3: Minor, niche, or low-impact stories
+
 Articles:
 ${articleBlock}
 
-Respond with ONLY a JSON object mapping article IDs to arrays of tag slugs. No other text.
-Example: {"abc123": ["ai"], "def456": ["economy"]}`;
+Respond with ONLY a JSON object mapping article IDs to objects with "tags" and "score". No other text.
+Example: {"abc123": {"tags": ["ai"], "score": 8}, "def456": {"tags": ["economy"], "score": 5}}`;
 }
 
-function extractTagMap(obj: Record<string, unknown>, validSlugs: Set<string>): Record<string, string[]> {
-  const result: Record<string, string[]> = {};
+export interface AiTagResult {
+  tags: string[];
+  score: number;
+}
 
-  for (const [id, tags] of Object.entries(obj)) {
-    if (!Array.isArray(tags)) continue;
-    const valid = tags
-      .filter((t): t is string => typeof t === "string" && validSlugs.has(t))
-      .slice(0, MAX_TAGS_PER_ARTICLE);
-    if (valid.length > 0) {
-      result[id] = valid;
+function extractTagMapWithScores(
+  obj: Record<string, unknown>,
+  validSlugs: Set<string>
+): Record<string, AiTagResult> {
+  const result: Record<string, AiTagResult> = {};
+
+  for (const [id, entry] of Object.entries(obj)) {
+    // New format: {"id": {"tags": [...], "score": N}}
+    if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) {
+      const e = entry as Record<string, unknown>;
+      const tags = Array.isArray(e.tags) ? e.tags : [];
+      const valid = tags
+        .filter((t): t is string => typeof t === "string" && validSlugs.has(t))
+        .slice(0, MAX_TAGS_PER_ARTICLE);
+      const score = typeof e.score === "number" ? Math.max(1, Math.min(10, Math.round(e.score))) : 5;
+      if (valid.length > 0) {
+        result[id] = { tags: valid, score };
+      }
+      continue;
+    }
+    // Legacy format: {"id": ["tag1", "tag2"]}
+    if (Array.isArray(entry)) {
+      const valid = entry
+        .filter((t): t is string => typeof t === "string" && validSlugs.has(t))
+        .slice(0, MAX_TAGS_PER_ARTICLE);
+      if (valid.length > 0) {
+        result[id] = { tags: valid, score: 5 };
+      }
     }
   }
 
   return result;
 }
 
-function parseAndValidate(raw: string, validSlugs: Set<string>): Record<string, string[]> {
+function parseAndValidate(raw: string, validSlugs: Set<string>): Record<string, AiTagResult> {
   // Extract JSON from potential markdown code blocks
   let jsonStr = raw.trim();
   const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -76,14 +105,14 @@ function parseAndValidate(raw: string, validSlugs: Set<string>): Record<string, 
 
   const obj = parsed as Record<string, unknown>;
 
-  // Try direct extraction first (expected format: {"articleId": ["tag1", "tag2"]})
-  const direct = extractTagMap(obj, validSlugs);
+  // Try direct extraction first
+  const direct = extractTagMapWithScores(obj, validSlugs);
   if (Object.keys(direct).length > 0) return direct;
 
   // AI may wrap response in a key like "tags", "result", etc — try unwrapping one level
   for (const value of Object.values(obj)) {
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const nested = extractTagMap(value as Record<string, unknown>, validSlugs);
+      const nested = extractTagMapWithScores(value as Record<string, unknown>, validSlugs);
       if (Object.keys(nested).length > 0) return nested;
     }
   }
@@ -93,7 +122,7 @@ function parseAndValidate(raw: string, validSlugs: Set<string>): Record<string, 
 
 export async function tagArticlesWithAi(
   request: TagRequest
-): Promise<Record<string, string[]>> {
+): Promise<Record<string, AiTagResult>> {
   const { articles, allTags, provider, apiKey, model } = request;
 
   const tags = allTags ?? TAG_DEFINITIONS.map((t) => ({ slug: t.slug, label: t.label }));

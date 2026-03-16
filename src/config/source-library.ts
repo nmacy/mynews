@@ -136,14 +136,15 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "wgn-tv", name: "WGN TV", url: "https://wgntv.com/feed/", priority: 2, category: "Chicago" },
   { id: "fox32-chicago", name: "FOX 32 Chicago", url: "https://www.fox32chicago.com/rss/category/apps", priority: 2, category: "Chicago" },
   { id: "chicago-reader", name: "Chicago Reader", url: "https://chicagoreader.com/feed/", priority: 3, category: "Chicago" },
-  { id: "chicago-tribune-gn", name: "Chicago Tribune (via Google)", url: "https://news.google.com/rss/search?q=site:chicagotribune.com&hl=en-US&gl=US&ceid=US:en", priority: 1, paywalled: true, category: "Chicago" },
-  { id: "daily-herald-gn", name: "Daily Herald (via Google)", url: "https://news.google.com/rss/search?q=site:dailyherald.com&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Chicago" },
-  { id: "google-news-chicago", name: "Google News Chicago", url: "https://news.google.com/rss/search?q=Chicago+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Chicago" },
 
   // ── Local (DuPage County / Western Suburbs) ──────────────
-  { id: "google-news-dupage", name: "Google News DuPage County", url: "https://news.google.com/rss/search?q=DuPage+County+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Local" },
-  { id: "google-news-villa-park", name: "Google News Villa Park", url: "https://news.google.com/rss/search?q=Villa+Park+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Local" },
+  { id: "daily-herald", name: "Daily Herald", url: "https://www.dailyherald.com/rssfeed/top-stories/", priority: 2, category: "Local" },
+  { id: "nbc-chicago-local", name: "NBC Chicago Local", url: "https://www.nbcchicago.com/news/local/feed/", priority: 2, category: "Local" },
+  { id: "chronicle-media", name: "Chronicle Media", url: "https://chronicleillinois.com/feed/", priority: 3, category: "Local" },
   { id: "patch-elmhurst", name: "Patch Elmhurst", url: "https://patch.com/feeds/illinois/elmhurst", priority: 3, category: "Local" },
+  { id: "patch-naperville", name: "Patch Naperville", url: "https://patch.com/feeds/illinois/naperville", priority: 3, category: "Local" },
+  { id: "positively-naperville", name: "Positively Naperville", url: "https://positivelynaperville.com/feed/", priority: 3, category: "Local" },
+  { id: "forest-park-review", name: "Forest Park Review", url: "https://www.forestparkreview.com/feed/", priority: 3, category: "Local" },
 
   // ── Other ──────────────────────────────────────────────────
   { id: "the-drive", name: "The Drive", url: "https://www.thedrive.com/feed", priority: 3, category: "Other" },

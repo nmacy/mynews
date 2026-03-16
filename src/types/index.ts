@@ -13,10 +13,6 @@ export interface LibrarySource extends Source {
   category: string;
 }
 
-export interface SourcesConfig {
-  sources: Source[];
-}
-
 export interface UserConfig {
   sources: Source[];
   featuredTags?: string[];
@@ -52,4 +48,16 @@ export interface Article {
   _dedupCount?: number;
 }
 
-export type AiProvider = "anthropic" | "openai" | "gemini" | "openrouter";
+export interface RankingConfig {
+  enabled: boolean;
+  layerAiScore: boolean;
+  layerSourcePriority: boolean;
+  layerTagInterest: boolean;
+  layerTimeDecay: boolean;
+  layerDedup: boolean;
+  timeDecayGravity: number;
+  debugScores: boolean;
+}
+
+export const AI_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter"] as const;
+export type AiProvider = (typeof AI_PROVIDERS)[number];

@@ -7,6 +7,7 @@ import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
+import { useScrollRestore } from "@/lib/useScrollRestore";
 import { useTagMap } from "@/components/TagProvider";
 import type { Article } from "@/types";
 import { type RankingConfig, DEFAULT_RANKING_CONFIG } from "@/lib/ranker";
@@ -40,6 +41,7 @@ function TagContent() {
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [rankingConfig, setRankingConfig] = useState<RankingConfig>(DEFAULT_RANKING_CONFIG);
 
   const tag = tagMap.get(slug);
@@ -56,14 +58,19 @@ function TagContent() {
       signal: controller.signal,
       cache: "no-store",
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        setArticles(data.articles as Article[]);
+        if (Array.isArray(data.articles)) setArticles(data.articles as Article[]);
         if (data.ranking) setRankingConfig(data.ranking);
+        setFetchError(false);
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error(err);
+        setFetchError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -72,21 +79,14 @@ function TagContent() {
     return () => controller.abort();
   }, [slug]);
 
-  useEffect(() => {
-    if (loading) return;
-    const savedY = sessionStorage.getItem("mn-scroll-y");
-    if (savedY) {
-      sessionStorage.removeItem("mn-scroll-y");
-      requestAnimationFrame(() => {
-        window.scrollTo(0, parseInt(savedY, 10));
-      });
-    }
-  }, [loading]);
+  useScrollRestore(loading);
 
   const { articles: taggedArticles } = useAiTagger(articles);
 
   const { filtered, activeFilters, hasActiveFilters } =
     useArticleFilters(taggedArticles);
+
+  if (loading) return <ArticleSkeleton />;
 
   if (!tag) {
     return (
@@ -96,7 +96,14 @@ function TagContent() {
     );
   }
 
-  if (loading) return <ArticleSkeleton />;
+  if (fetchError && articles.length === 0) {
+    return (
+      <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+        <p className="text-lg">Failed to load articles</p>
+        <p className="text-sm mt-1">Check your connection and try refreshing.</p>
+      </div>
+    );
+  }
 
   const hero = hasActiveFilters ? undefined : filtered[0];
   const grid = hasActiveFilters ? filtered : filtered.slice(1);

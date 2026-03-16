@@ -81,7 +81,7 @@ function IframeFallback({ article, displayContent }: { article: Article; display
             className="w-full"
             style={{ height: "80vh", border: "none" }}
             referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-popups"
+            sandbox="allow-scripts allow-popups"
           />
         </div>
       ) : (
@@ -122,13 +122,28 @@ export default function ArticlePage() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState(false);
 
-  // Load article from sessionStorage
+  const [notFound, setNotFound] = useState(false);
+
+  // Load article from sessionStorage, fallback to API if not found (direct navigation/bookmark)
   useEffect(() => {
     if (!id) return;
     const stored = getStoredArticle(id);
     if (stored) {
       setArticle(stored);
+      return;
     }
+    // Direct navigation — try fetching all articles and find by ID
+    fetch("/api/feeds")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        const found = (data.articles as Article[])?.find((a) => a.id === id);
+        if (found) setArticle(found);
+        else setNotFound(true);
+      })
+      .catch(() => setNotFound(true));
   }, [id]);
 
   // Extract full article content.
@@ -163,6 +178,21 @@ export default function ArticlePage() {
   );
 
   if (!article) {
+    if (notFound) {
+      return (
+        <div className="max-w-3xl mx-auto text-center py-16" style={{ color: "var(--mn-muted)" }}>
+          <p className="text-lg">Article not found</p>
+          <p className="text-sm mt-1">This article may have expired or the link may be invalid.</p>
+          <button
+            onClick={() => router.push("/")}
+            className="mt-4 text-sm font-medium hover:underline"
+            style={{ color: "var(--mn-link)" }}
+          >
+            Back to home
+          </button>
+        </div>
+      );
+    }
     return <ArticleDetailSkeleton />;
   }
 
@@ -191,7 +221,7 @@ export default function ArticlePage() {
         {(article.tags ?? []).length > 0 && (
           <div className="flex items-center gap-2 mb-3">
             {[...new Set(article.tags ?? [])].map((tag) => (
-              <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
+              <TagBadge key={tag} slug={tag} />
             ))}
           </div>
         )}

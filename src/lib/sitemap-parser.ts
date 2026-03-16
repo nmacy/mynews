@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import { generateArticleId, stripHtml, truncate } from "./articles";
 import { assignTags } from "./tagger";
+import { isSafeUrl } from "./url-validation";
 import type { TagDefinition } from "@/config/tags";
 import type { Article, Source } from "@/types";
 
@@ -44,7 +45,7 @@ export async function fetchSitemapSource(
 
   for (const urlEl of urlElements) {
     const loc = urlEl.querySelector("loc")?.textContent?.trim();
-    if (!loc) continue;
+    if (!loc || !isSafeUrl(loc)) continue;
 
     const title = stripHtml(
       urlEl.getElementsByTagName("news:title")[0]?.textContent ?? ""

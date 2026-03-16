@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTagMap } from "@/components/TagProvider";
 
-export function TagBadge({ slug, aiTagged }: { slug: string; aiTagged?: boolean }) {
+export function TagBadge({ slug }: { slug: string }) {
   const router = useRouter();
   const tagMap = useTagMap();
   const tag = tagMap.get(slug);

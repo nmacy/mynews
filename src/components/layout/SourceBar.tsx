@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
+import { useClickOutside } from "@/lib/useClickOutside";
 
 export interface SourceGroup {
   name: string;
@@ -84,17 +85,8 @@ export function SourceBar() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => { setHydrated(true); }, []);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  const closeDropdown = useCallback(() => { setMoreOpen(false); setSearch(""); }, []);
+  useClickOutside(moreRef, closeDropdown, moreOpen);
 
   useEffect(() => {
     if (moreOpen && searchRef.current) {
@@ -126,21 +118,24 @@ export function SourceBar() {
   }, [isListingPage, sourcesParam]);
 
   const activeIds = isListingPage ? urlActiveIds : restoredIds;
-  const activeSet = new Set(activeIds);
+  const activeSet = useMemo(() => new Set(activeIds), [activeIds]);
 
   // Split into featured (inline) vs overflow groups
   const hasCustomOrder = sourceBarOrder.length > 0;
-  const featuredSet = new Set(sourceBarOrder);
-  const featuredGroups = hasCustomOrder
-    ? groups.filter((g) => featuredSet.has(g.name))
-    : groups;
-  const overflowGroups = hasCustomOrder
-    ? groups.filter((g) => !featuredSet.has(g.name))
-    : [];
+  const featuredSet = useMemo(() => new Set(sourceBarOrder), [sourceBarOrder]);
+  const featuredGroups = useMemo(
+    () => hasCustomOrder ? groups.filter((g) => featuredSet.has(g.name)) : groups,
+    [hasCustomOrder, groups, featuredSet]
+  );
+  const overflowGroups = useMemo(
+    () => hasCustomOrder ? groups.filter((g) => !featuredSet.has(g.name)) : [],
+    [hasCustomOrder, groups, featuredSet]
+  );
 
   // Check if the active source is in the overflow
-  const activeOverflowGroup = overflowGroups.find((g) =>
-    g.ids.every((id) => activeSet.has(id)) && activeIds.length === g.ids.length
+  const activeOverflowGroup = useMemo(
+    () => overflowGroups.find((g) => g.ids.every((id) => activeSet.has(id)) && activeIds.length === g.ids.length),
+    [overflowGroups, activeSet, activeIds.length]
   );
 
   const filteredOverflow = useMemo(() => {

@@ -4,7 +4,7 @@ import { tagArticlesWithAi } from "@/lib/ai-tagger";
 import { discoverNewTags } from "@/lib/ai-tag-discovery";
 import { getAllTagDefinitions, getNextAvailableColor } from "@/lib/custom-tags";
 import { updateArticleAiData } from "@/lib/article-db";
-import { setCache } from "@/lib/cache";
+import { AI_PROVIDERS } from "@/types";
 import type { Article, AiProvider } from "@/types";
 
 const AI_TAG_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
@@ -30,6 +30,7 @@ async function getAiConfig(): Promise<AiConfig | null> {
     if (!row) return null;
 
     const apiKey = decrypt(row.encryptedKey, row.iv, row.authTag);
+    if (!(AI_PROVIDERS as readonly string[]).includes(row.provider)) return null;
     return {
       provider: row.provider as AiProvider,
       apiKey,
@@ -63,69 +64,71 @@ export async function autoTagArticles(articles: Article[]): Promise<void> {
   lastAiTagRun = now;
   console.log(`[auto-tagger] Tagging ${untagged.length} articles with AI`);
 
-  const allTags = await getAllTagDefinitions();
-  const tagList = allTags.map((t) => ({ slug: t.slug, label: t.label }));
-  const pendingMutations = new Map<string, { tags: string[]; score: number }>();
+  try {
+    const allTags = await getAllTagDefinitions();
+    const tagList = allTags.map((t) => ({ slug: t.slug, label: t.label }));
+    const pendingMutations = new Map<string, { tags: string[]; score: number }>();
 
-  for (let i = 0; i < untagged.length; i += BATCH_SIZE) {
-    const batch = untagged.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    for (let i = 0; i < untagged.length; i += BATCH_SIZE) {
+      const batch = untagged.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
 
-    try {
-      const tagMap = await tagArticlesWithAi({
-        articles: batch.map((a) => ({
-          id: a.id,
-          title: a.title,
-          description: a.description,
-        })),
-        allTags: tagList,
-        provider: config.provider,
-        apiKey: config.apiKey,
-        model: config.model,
-      });
+      try {
+        const tagMap = await tagArticlesWithAi({
+          articles: batch.map((a) => ({
+            id: a.id,
+            title: a.title,
+            description: a.description,
+          })),
+          allTags: tagList,
+          provider: config.provider,
+          apiKey: config.apiKey,
+          model: config.model,
+        });
 
-      let tagged = 0;
-      for (const article of batch) {
-        const result = tagMap[article.id];
-        if (result && result.tags.length > 0) {
-          const merged = Array.from(new Set([...article.tags, ...result.tags]));
-          pendingMutations.set(article.id, { tags: merged, score: result.score });
-          tagged++;
+        let tagged = 0;
+        for (const article of batch) {
+          const result = tagMap[article.id];
+          if (result && result.tags.length > 0) {
+            const merged = Array.from(new Set([...article.tags, ...result.tags]));
+            pendingMutations.set(article.id, { tags: merged, score: result.score });
+            tagged++;
+          }
         }
+
+        console.log(`[auto-tagger] Batch ${batchNum}: tagged ${tagged} articles`);
+      } catch (err) {
+        console.warn(`[auto-tagger] Batch ${batchNum} failed:`, err);
       }
-
-      console.log(`[auto-tagger] Batch ${batchNum}: tagged ${tagged} articles`);
-    } catch (err) {
-      console.warn(`[auto-tagger] Batch ${batchNum} failed:`, err);
     }
-  }
 
-  // Persist tag updates to DB first, then apply to in-memory articles
-  if (pendingMutations.size > 0) {
-    const dbUpdates = Array.from(pendingMutations, ([id, { tags, score }]) => ({
-      id,
-      tags,
-      relevanceScore: score,
-    }));
-    try {
-      await updateArticleAiData(dbUpdates);
+    // Persist tag updates to DB first, then apply to in-memory articles
+    if (pendingMutations.size > 0) {
+      const dbUpdates = Array.from(pendingMutations, ([id, { tags, score }]) => ({
+        id,
+        tags,
+        relevanceScore: score,
+      }));
+      try {
+        await updateArticleAiData(dbUpdates);
 
-      // DB succeeded — now apply mutations to in-memory articles and update cache
-      for (const article of articles) {
-        const mutation = pendingMutations.get(article.id);
-        if (mutation) {
-          article.tags = mutation.tags;
-          article.relevanceScore = mutation.score;
-          article._aiTagged = true;
+        // DB succeeded — now apply mutations to in-memory articles and update cache
+        for (const article of articles) {
+          const mutation = pendingMutations.get(article.id);
+          if (mutation) {
+            article.tags = mutation.tags;
+            article.relevanceScore = mutation.score;
+            article._aiTagged = true;
+          }
         }
+        // Note: in-memory mutations above are intentional for the current refresh cycle
+      } catch (err) {
+        console.warn("[auto-tagger] DB persist failed, skipping in-memory update:", err);
       }
-      setCache("all-articles", articles);
-    } catch (err) {
-      console.warn("[auto-tagger] DB persist failed, skipping in-memory update:", err);
     }
+  } finally {
+    aiTaggingInProgress = false;
   }
-
-  aiTaggingInProgress = false;
 }
 
 export async function autoDiscoverTags(articles: Article[]): Promise<void> {

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { isSafeUrl } from "./url-validation";
 
 const PROBE_CONCURRENCY = 5;
 const PROBE_TIMEOUT_MS = 8000;
@@ -13,6 +14,7 @@ const BROWSER_UA =
  * Much faster than full extraction — no Readability, no fallback chain.
  */
 async function probeUrl(url: string): Promise<boolean> {
+  if (!isSafeUrl(url)) return false;
   try {
     const res = await fetch(url, {
       headers: {

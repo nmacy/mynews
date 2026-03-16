@@ -80,7 +80,7 @@ export function HeroArticle({ article, debugScores }: { article: Article; debugS
           {(article.tags ?? []).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-3">
               {[...new Set(article.tags ?? [])].map((tag) => (
-                <TagBadge key={tag} slug={tag} aiTagged={article._aiTagged} />
+                <TagBadge key={tag} slug={tag} />
               ))}
             </div>
           )}

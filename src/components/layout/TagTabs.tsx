@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
 import { useTagMap } from "@/components/TagProvider";
+import { useClickOutside } from "@/lib/useClickOutside";
 
 export const DEFAULT_FEATURED_TAGS = [
   "technology",
@@ -49,16 +50,8 @@ export function TagTabs() {
 
   const activeSlug = isListingPage ? urlSlug : restoredSlug;
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  const closeDropdown = useCallback(() => { setMoreOpen(false); setSearch(""); }, []);
+  useClickOutside(moreRef, closeDropdown, moreOpen);
 
   useEffect(() => {
     if (moreOpen && searchRef.current) {
@@ -66,9 +59,10 @@ export function TagTabs() {
     }
   }, [moreOpen]);
 
-  const featuredSet = new Set<string>(featuredTags);
-  const remainingTags = Array.from(TAG_MAP.values()).filter(
-    (t) => !featuredSet.has(t.slug)
+  const featuredSet = useMemo(() => new Set<string>(featuredTags), [featuredTags]);
+  const remainingTags = useMemo(
+    () => Array.from(TAG_MAP.values()).filter((t) => !featuredSet.has(t.slug)),
+    [TAG_MAP, featuredSet]
   );
 
   const filteredTags = useMemo(() => {
@@ -105,7 +99,7 @@ export function TagTabs() {
               className="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-full transition-colors"
               style={
                 activeSlug === null && pathname === "/"
-                  ? { backgroundColor: "#6366F1", color: "white" }
+                  ? { backgroundColor: "var(--mn-accent)", color: "white" }
                   : { color: "var(--mn-muted)" }
               }
             >
@@ -149,14 +143,13 @@ export function TagTabs() {
               <button
                 onClick={() => setMoreOpen((v) => !v)}
                 className="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-full transition-colors"
-                style={{
-                  color: remainingTags.some((t) => t.slug === activeSlug)
-                    ? "white"
-                    : "var(--mn-muted)",
-                  backgroundColor: remainingTags.some((t) => t.slug === activeSlug)
-                    ? TAG_MAP.get(activeSlug!)?.color
-                    : "transparent",
-                }}
+                style={(() => {
+                  const isActiveInMore = remainingTags.some((t) => t.slug === activeSlug);
+                  return {
+                    color: isActiveInMore ? "white" : "var(--mn-muted)",
+                    backgroundColor: isActiveInMore ? TAG_MAP.get(activeSlug!)?.color : "transparent",
+                  };
+                })()}
               >
                 More
                 <svg

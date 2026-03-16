@@ -150,8 +150,8 @@ export async function register() {
   // Delay initial refresh so the server is responsive immediately.
   // The DB already has persisted articles from prior runs — clients can
   // read those while we fetch fresh RSS in the background.
-  setTimeout(() => {
-    refresh();
+  setTimeout(async () => {
+    await refresh();
     scheduleNext();
   }, 15_000);
 }

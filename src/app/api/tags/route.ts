@@ -5,9 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getAllTagDefinitions } from "@/lib/custom-tags";
+import { AI_PROVIDERS } from "@/types";
 import type { AiProvider } from "@/types";
 
-const VALID_PROVIDERS = new Set(["anthropic", "openai", "gemini", "openrouter"]);
+export const dynamic = "force-dynamic";
+
+const VALID_PROVIDERS = new Set<string>(AI_PROVIDERS);
 const MAX_ARTICLES = 100;
 
 // 10 tagging requests per minute per user

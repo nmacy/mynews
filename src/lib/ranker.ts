@@ -1,15 +1,6 @@
-import type { Article } from "@/types";
+import type { Article, RankingConfig } from "@/types";
 
-export interface RankingConfig {
-  enabled: boolean;
-  layerAiScore: boolean;
-  layerSourcePriority: boolean;
-  layerTagInterest: boolean;
-  layerTimeDecay: boolean;
-  layerDedup: boolean;
-  timeDecayGravity: number;
-  debugScores: boolean;
-}
+export type { RankingConfig };
 
 export const DEFAULT_RANKING_CONFIG: RankingConfig = {
   enabled: false,
@@ -92,8 +83,8 @@ export function deduplicateArticles(articles: Article[]): Article[] {
       }
     }
 
-    representative.article._dedupCount = dupCount > 0 ? dupCount : undefined;
-    result.push(representative.article);
+    const chosen = { ...representative.article, _dedupCount: dupCount > 0 ? dupCount : undefined };
+    result.push(chosen);
   }
 
   return result;
@@ -107,8 +98,9 @@ export function rankArticles(
   if (!config.enabled) return articles;
 
   const now = Date.now();
+  const scored = articles.map((a) => ({ ...a }));
 
-  for (const article of articles) {
+  for (const article of scored) {
     // Layer 1: AI relevance score (1-10)
     let score = config.layerAiScore ? article.relevanceScore : 5;
 
@@ -141,12 +133,12 @@ export function rankArticles(
   }
 
   // Sort by rank score descending
-  articles.sort((a, b) => (b._rankScore ?? 0) - (a._rankScore ?? 0));
+  scored.sort((a, b) => (b._rankScore ?? 0) - (a._rankScore ?? 0));
 
   // Layer 5: deduplication
   if (config.layerDedup) {
-    return deduplicateArticles(articles);
+    return deduplicateArticles(scored);
   }
 
-  return articles;
+  return scored;
 }

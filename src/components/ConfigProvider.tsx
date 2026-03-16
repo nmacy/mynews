@@ -268,15 +268,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     if (Object.keys(pendingSaveRef.current).length > 0) {
       const merged = { ...pendingSaveRef.current };
       pendingSaveRef.current = {};
-      // Use sendBeacon for reliability during page unload
-      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-        navigator.sendBeacon(
-          "/api/user/settings",
-          new Blob([JSON.stringify(merged)], { type: "application/json" })
-        );
-      } else {
-        saveServerSettings(merged);
-      }
+      // Use fetch with keepalive for reliability during page unload
+      fetch("/api/user/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged),
+        keepalive: true,
+      }).catch(() => {});
     }
   }, []);
 
@@ -325,6 +323,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const addSource = useCallback(
     (source: Source) => {
       const cur = configRef.current;
+      if (cur.sources.some((s) => s.id === source.id)) return;
       persist({ ...cur, sources: [...cur.sources, source] });
     },
     [persist]
@@ -333,7 +332,10 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const addSources = useCallback(
     (sources: Source[]) => {
       const cur = configRef.current;
-      persist({ ...cur, sources: [...cur.sources, ...sources] });
+      const existingIds = new Set(cur.sources.map((s) => s.id));
+      const newSources = sources.filter((s) => !existingIds.has(s.id));
+      if (newSources.length === 0) return;
+      persist({ ...cur, sources: [...cur.sources, ...newSources] });
     },
     [persist]
   );

@@ -248,7 +248,7 @@ function ManualSourceForm({
         return;
       }
 
-      const id = slugify(trimmedName) || generateSourceId(trimmedName);
+      const id = generateSourceId(trimmedName);
       const source: Source = {
         id,
         name: trimmedName,

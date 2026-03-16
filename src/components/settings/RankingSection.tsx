@@ -1,17 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-
-interface RankingConfig {
-  enabled: boolean;
-  layerAiScore: boolean;
-  layerSourcePriority: boolean;
-  layerTagInterest: boolean;
-  layerTimeDecay: boolean;
-  layerDedup: boolean;
-  timeDecayGravity: number;
-  debugScores: boolean;
-}
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { RankingConfig } from "@/types";
 
 const LAYER_DESCRIPTIONS: Record<string, string> = {
   layerAiScore: "AI assigns a 1-10 relevance score to each article based on importance and impact.",
@@ -65,6 +55,16 @@ export function RankingSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const gravityTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      if (gravityTimerRef.current) clearTimeout(gravityTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/admin/server-config")
@@ -115,7 +115,8 @@ export function RankingSection() {
       });
       if (!res.ok) throw new Error("Save failed");
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -130,12 +131,19 @@ export function RankingSection() {
     save(updated);
   };
 
-  const handleGravity = (value: number) => {
-    if (!config) return;
-    const updated = { ...config, timeDecayGravity: value };
-    setConfig(updated);
-    save(updated);
-  };
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  const handleGravity = useCallback((value: number) => {
+    setConfig((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, timeDecayGravity: value };
+      // Debounce save — only fire after user stops dragging
+      if (gravityTimerRef.current) clearTimeout(gravityTimerRef.current);
+      gravityTimerRef.current = setTimeout(() => saveRef.current(updated), 300);
+      return updated;
+    });
+  }, []);
 
   if (loading) {
     return (

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import type { RankingConfig } from "@/types";
 
 const cache = new Map<string, { value: string; fetchedAt: number }>();
 const CACHE_TTL_MS = 60_000;
@@ -40,17 +41,6 @@ export async function getRetentionDays(): Promise<number> {
   const val = await getServerConfig("retentionDays");
   const days = val ? parseInt(val, 10) : 14;
   return isNaN(days) || days < 1 ? 14 : days;
-}
-
-export interface RankingConfig {
-  enabled: boolean;
-  layerAiScore: boolean;
-  layerSourcePriority: boolean;
-  layerTagInterest: boolean;
-  layerTimeDecay: boolean;
-  layerDedup: boolean;
-  timeDecayGravity: number;
-  debugScores: boolean;
 }
 
 const RANKING_KEYS = {

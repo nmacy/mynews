@@ -8,6 +8,7 @@ import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { PaywallBadge } from "@/components/ui/PaywallBadge";
 import { useAiTagger } from "@/lib/useAiTagger";
+import { useScrollRestore } from "@/lib/useScrollRestore";
 import type { Article } from "@/types";
 
 function SourceSkeleton() {
@@ -46,6 +47,7 @@ export default function SourcePage() {
   const { allSources } = useConfig();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   // Look up source metadata from user config; may be undefined if source
   // isn't in the user's list (e.g. navigated via article card from defaults)
@@ -63,38 +65,27 @@ export default function SourcePage() {
     // Always fetch by sourceIds — works whether or not the source is in
     // the user's config. The API reads from the DB which has all sources.
     fetch(`/api/feeds?sourceIds=${encodeURIComponent(id)}`, { signal: controller.signal, cache: "no-store" })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        console.log(`[source-page] Fetched ${data.count} articles (total: ${data.total}) for source ${id}`);
-        setArticles(data.articles as Article[]);
+        if (Array.isArray(data.articles)) setArticles(data.articles as Article[]);
+        setFetchError(false);
       })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          console.log(`[source-page] Fetch aborted for ${id}`);
-          return;
-        }
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("[source-page] Fetch error:", err);
+        setFetchError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => {
-      console.log(`[source-page] Cleanup: aborting fetch for ${id}`);
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [id]);
 
-  useEffect(() => {
-    if (loading) return;
-    const savedY = sessionStorage.getItem("mn-scroll-y");
-    if (savedY) {
-      sessionStorage.removeItem("mn-scroll-y");
-      requestAnimationFrame(() => {
-        window.scrollTo(0, parseInt(savedY, 10));
-      });
-    }
-  }, [loading]);
+  useScrollRestore(loading);
 
   const { articles: taggedArticles } = useAiTagger(articles);
 
@@ -104,6 +95,18 @@ export default function SourcePage() {
   const sourceName = source?.name ?? taggedArticles[0]?.source.name ?? id;
   const sourceUrl = source?.url;
   const isPaywalled = source?.paywalled ?? taggedArticles[0]?.paywalled;
+
+  if (fetchError && taggedArticles.length === 0) {
+    return (
+      <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+        <p className="text-lg">Failed to load articles</p>
+        <p className="text-sm mt-1">Check your connection and try refreshing.</p>
+        <Link href="/" className="text-sm mt-2 inline-block hover:underline" style={{ color: "var(--mn-link)" }}>
+          Back to home
+        </Link>
+      </div>
+    );
+  }
 
   if (taggedArticles.length === 0) {
     return (

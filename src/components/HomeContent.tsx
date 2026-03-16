@@ -9,7 +9,8 @@ import { ArticleGrid } from "@/components/articles/ArticleGrid";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
-import { rankArticles, type RankingConfig, DEFAULT_RANKING_CONFIG } from "@/lib/ranker";
+import { useScrollRestore } from "@/lib/useScrollRestore";
+import { type RankingConfig, DEFAULT_RANKING_CONFIG } from "@/lib/ranker";
 import type { Article } from "@/types";
 
 export function ArticleSkeleton() {
@@ -47,12 +48,10 @@ export function ArticleSkeleton() {
 }
 
 interface HomeContentProps {
-  initialArticles: Article[];
-  initialSourcesKey: string;
   initialRankingConfig?: RankingConfig;
 }
 
-export function HomeContent({ initialArticles, initialSourcesKey, initialRankingConfig }: HomeContentProps) {
+export function HomeContent({ initialRankingConfig }: HomeContentProps) {
   const { config } = useConfig();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
@@ -69,20 +68,12 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
   // Combine user sources key + source bar filter into a single fetch key
   const fetchKey = sourceBarFilter ? `${sourcesKey}:filter:${sourceBarFilter}` : sourcesKey;
 
-  // Use server-fetched articles if sources match defaults, otherwise need client fetch
-  const hasInitialData = initialArticles.length > 0 && sourcesKey === initialSourcesKey && !sourceBarFilter;
-  const [articles, setArticles] = useState<Article[]>(hasInitialData ? initialArticles : []);
-  const [loading, setLoading] = useState(!hasInitialData);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(true);
   const [failedSources, setFailedSources] = useState<{ name: string; url: string }[]>([]);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    // Skip fetch if we already have server-rendered data for this sources key
-    if (!sourceBarFilter && sourcesKey === initialSourcesKey && initialArticles.length > 0) {
-      setArticles(initialArticles);
-      setLoading(false);
-      return;
-    }
-
     if (config.sources.length === 0) {
       setArticles([]);
       setLoading(false);
@@ -98,15 +89,20 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
         signal: controller.signal,
         cache: "no-store",
       })
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
         .then((data) => {
-          setArticles(data.articles as Article[]);
+          if (Array.isArray(data.articles)) setArticles(data.articles as Article[]);
           setFailedSources(data.failedSources ?? []);
           if (data.ranking) setRankingConfig(data.ranking);
+          setFetchError(false);
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
           console.error(err);
+          setFetchError(true);
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
@@ -119,15 +115,20 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
         body: JSON.stringify({ sources: config.sources }),
         signal: controller.signal,
       })
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
         .then((data) => {
-          setArticles(data.articles as Article[]);
+          if (Array.isArray(data.articles)) setArticles(data.articles as Article[]);
           setFailedSources(data.failedSources ?? []);
           if (data.ranking) setRankingConfig(data.ranking);
+          setFetchError(false);
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
           console.error(err);
+          setFetchError(true);
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
@@ -138,24 +139,9 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey]);
 
-  const [initialVisible, setInitialVisible] = useState<number | undefined>(undefined);
+  const initialVisible = useScrollRestore(loading);
 
-  useEffect(() => {
-    if (loading) return;
-    const savedY = sessionStorage.getItem("mn-scroll-y");
-    if (savedY) {
-      sessionStorage.removeItem("mn-scroll-y");
-      const scrollY = parseInt(savedY, 10);
-      if (scrollY > 0) {
-        setInitialVisible(Math.ceil(scrollY / 400) * 3 + 30);
-      }
-      requestAnimationFrame(() => {
-        window.scrollTo(0, scrollY);
-      });
-    }
-  }, [loading]);
-
-  const { articles: taggedArticles, isTagging, error: aiError } = useAiTagger(articles);
+  const { articles: taggedArticles } = useAiTagger(articles);
 
   // Client-side ranking with tag interest boost (per-user featuredTags)
   const [rankingConfig, setRankingConfig] = useState<RankingConfig>(initialRankingConfig ?? DEFAULT_RANKING_CONFIG);
@@ -182,7 +168,7 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
     return rankedArticles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+        (a.description ?? "").toLowerCase().includes(q)
     );
   }, [rankedArticles, searchQuery]);
 
@@ -191,23 +177,23 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
 
   if (loading) return <ArticleSkeleton />;
 
-  const displayed = filtered;
-  const isFiltered = hasActiveFilters || searchQuery;
-  const hero = isFiltered ? undefined : displayed[0];
-  const grid = isFiltered ? displayed : displayed.slice(1);
+  const isFiltered = hasActiveFilters || searchQuery.length > 0;
+  const hero = isFiltered ? undefined : filtered[0];
+  const grid = isFiltered ? filtered : filtered.slice(1);
 
   return (
     <>
+      {fetchError && articles.length === 0 && (
+        <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
+          <p className="text-lg">Failed to load articles</p>
+          <p className="text-sm mt-1">Check your connection and try refreshing the page.</p>
+        </div>
+      )}
       {failedSources.length > 0 && (
         <div className="text-xs mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400">
           Failed to fetch articles from: {failedSources.map((s) => s.name).join(", ")}.
           {" "}The RSS feed may be invalid or unavailable.
         </div>
-      )}
-      {aiError && (
-        <p className="text-xs mb-4 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">
-          AI tagging failed: {aiError}
-        </p>
       )}
       {searchQuery && (
         <div className="flex items-center justify-between mb-6">
@@ -227,7 +213,7 @@ export function HomeContent({ initialArticles, initialSourcesKey, initialRanking
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
       />
-      {displayed.length === 0 && isFiltered ? (
+      {filtered.length === 0 && isFiltered ? (
         <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
           <p className="text-lg">No results found</p>
           <p className="text-sm mt-1">Try adjusting your filters</p>

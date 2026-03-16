@@ -1,10 +1,11 @@
+import { createHash } from "crypto";
 import Parser from "rss-parser";
 import { getCached, getCachedWithStatus, setCache, clearCache } from "./cache";
 import { generateArticleId, stripHtml, truncate, decodeHtmlEntities } from "./articles";
 import { extractImageFromItem, extractOgImage } from "./image-extractor";
 import { assignTags } from "./tagger";
 import { getCustomTags } from "./custom-tags";
-import { persistArticles, loadPersistedArticles, pruneExpiredArticles, updateArticleImages } from "./article-db";
+import { persistArticles, loadPersistedArticles, pruneExpiredArticles, updateArticleImages, safeJsonArray } from "./article-db";
 import type { TagDefinition } from "@/config/tags";
 import sourcesConfig from "@/config/sources.json";
 import { fetchWebSource } from "./web-scraper";
@@ -13,7 +14,7 @@ import { prisma } from "./prisma";
 import { rankArticles } from "./ranker";
 import { getRankingConfig } from "./server-config";
 import { SOURCE_LIBRARY } from "@/config/source-library";
-import type { Article, Source, SourcesConfig } from "@/types";
+import type { Article, Source } from "@/types";
 
 /** Source IDs that should auto-receive the "local-news" tag */
 const LOCAL_SOURCE_IDS = new Set(
@@ -22,7 +23,7 @@ const LOCAL_SOURCE_IDS = new Set(
     .map((s) => s.id)
 );
 
-const config = sourcesConfig as SourcesConfig;
+const defaultSourcesConfig = sourcesConfig as { sources: Source[] };
 const parser = new Parser({
   customFields: {
     item: [
@@ -80,8 +81,9 @@ export async function allSettledWithLimit<T>(
   let idx = 0;
 
   async function worker() {
-    while (idx < tasks.length) {
+    while (true) {
       const i = idx++;
+      if (i >= tasks.length) break;
       try {
         results[i] = { status: "fulfilled", value: await tasks[i]() };
       } catch (reason) {
@@ -209,7 +211,8 @@ export async function fetchSource(
  */
 function fillOgImagesInBackground(articles: Article[]): void {
   const needImages = articles.filter((a) => !a.imageUrl);
-  const key = articles.map((a) => a.id).sort().join(",").slice(0, 100);
+  const raw = articles.map((a) => a.id).sort().join(",");
+  const key = createHash("md5").update(raw).digest("hex");
   if (needImages.length === 0 || ogFillInFlight.has(key)) return;
 
   ogFillInFlight.add(key);
@@ -235,8 +238,18 @@ function fillOgImagesInBackground(articles: Article[]): void {
   });
 }
 
+/** Deduplicate articles by URL, keeping the first occurrence */
+export function deduplicateByUrl(articles: Article[]): Article[] {
+  const seen = new Set<string>();
+  return articles.filter((a) => {
+    if (seen.has(a.url)) return false;
+    seen.add(a.url);
+    return true;
+  });
+}
+
 /** Standard sort: real timestamps first, then by date descending */
-function sortArticles(articles: Article[]): void {
+export function sortArticles(articles: Article[]): void {
   articles.sort((a, b) => {
     const aHasTs = a._hasTimestamp !== false;
     const bHasTs = b._hasTimestamp !== false;
@@ -268,7 +281,7 @@ async function sortArticlesWithRanking(articles: Article[]): Promise<Article[]> 
 const MAX_ARTICLES_DB = 1000;
 
 async function loadArticlesFromDb(sourceIds: string[]): Promise<Article[]> {
-  const cacheKey = DB_READ_CACHE_PREFIX + sourceIds.sort().join(",");
+  const cacheKey = DB_READ_CACHE_PREFIX + [...sourceIds].sort().join(",");
   const cached = getCached<Article[]>(cacheKey);
   if (cached) return cached;
 
@@ -308,11 +321,6 @@ export async function getArticlesForSources(sources: Source[]): Promise<Article[
 export async function getAllArticles(): Promise<Article[]> {
   const sources = await getAllSourcesAcrossUsers();
   return getArticlesForSources(sources);
-}
-
-export async function getArticleById(id: string): Promise<Article | null> {
-  const all = await getAllArticles();
-  return all.find((a) => a.id === id) ?? null;
 }
 
 // ─── Write path: background refresh fetches RSS and persists to DB ─────────
@@ -362,35 +370,29 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
   }
 
   // Deduplicate by URL
-  const seen = new Set<string>();
-  const unique = articles.filter((a) => {
-    if (seen.has(a.url)) return false;
-    seen.add(a.url);
-    return true;
-  });
+  const unique = deduplicateByUrl(articles);
 
   // Persist fresh articles to DB
   try {
     await persistArticles(unique);
   } catch (err) {
-    console.warn("[article-db] Persist failed:", err);
+    console.warn("[feeds] Persist failed:", err);
   }
 
   // Prune expired articles (sequential, not concurrent with reads)
   try {
     await pruneExpiredArticles();
   } catch (err) {
-    console.warn("[article-db] Prune failed:", err);
+    console.warn("[feeds] Prune failed:", err);
   }
 
   // Invalidate DB read caches so next request picks up new articles
-  invalidateArticleCaches();
+  clearCache();
 
   // Carry over DB fields (timestamps, AI tags, images) for the returned articles.
   // Only load articles we actually need to merge — use the URLs from the fresh fetch
   // plus a limited set of DB-only articles, instead of loading all 14K+ articles.
   try {
-    const { prisma: db } = await import("./prisma");
     const freshUrls = unique.map((a) => a.url);
 
     // Batch lookup: only fetch DB rows matching the fresh articles' URLs
@@ -398,7 +400,7 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
     const dbMap = new Map<string, Article>();
     for (let i = 0; i < freshUrls.length; i += BATCH) {
       const batch = freshUrls.slice(i, i + BATCH);
-      const rows = await db.article.findMany({
+      const rows = await prisma.article.findMany({
         where: { url: { in: batch } },
       });
       for (const r of rows) {
@@ -411,12 +413,12 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
           imageUrl: r.imageUrl,
           publishedAt: r.publishedAt.toISOString(),
           source: { id: r.sourceId, name: r.sourceName },
-          categories: JSON.parse(r.categories) as string[],
-          tags: JSON.parse(r.tags) as string[],
+          categories: safeJsonArray(r.categories),
+          tags: safeJsonArray(r.tags),
           priority: r.priority,
           paywalled: r.paywalled,
           relevanceScore: r.relevanceScore,
-          _aiTagged: r.aiTagged || undefined,
+          _aiTagged: r.aiTagged ? true : undefined,
           _hasTimestamp: r.hasTimestamp,
         });
       }
@@ -444,20 +446,11 @@ export async function refreshAndPersist(sources: Source[]): Promise<Article[]> {
     const extra = dbOnly.filter((a) => !rssUrls.has(a.url));
     unique.push(...extra);
   } catch (err) {
-    console.warn("[article-db] DB load for merge failed:", err);
+    console.warn("[feeds] DB load for merge failed:", err);
   }
 
   sortArticles(unique);
   return unique;
-}
-
-/**
- * Invalidate all DB-read article caches so next request reads fresh from DB.
- */
-function invalidateArticleCaches(): void {
-  // clearCache() clears everything; we could be more surgical but
-  // the DB read caches are cheap to repopulate (2-min TTL anyway)
-  clearCache();
 }
 
 // ─── Source management ─────────────────────────────────────────────────────
@@ -474,7 +467,7 @@ export async function getSources(): Promise<Source[]> {
   } catch {
     // fall through to static defaults
   }
-  return config.sources;
+  return defaultSourcesConfig.sources;
 }
 
 const ALL_SOURCES_CACHE_KEY = "all-sources-across-users";
@@ -535,7 +528,7 @@ async function computeAllSources(): Promise<Source[]> {
     where: { key: PERSISTED_SOURCES_KEY },
     update: { value: JSON.stringify(result) },
     create: { key: PERSISTED_SOURCES_KEY, value: JSON.stringify(result) },
-  }).catch(() => {});
+  }).catch((err) => console.warn("[feeds] Failed to persist all-sources:", err));
 
   return result;
 }

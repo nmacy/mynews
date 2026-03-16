@@ -5,6 +5,12 @@ import { getServerConfig, setServerConfig, getRankingConfig } from "@/lib/server
 
 export const dynamic = "force-dynamic";
 
+function parseIntOrDefault(val: string | null, fallback: number): number {
+  if (!val) return fallback;
+  const n = parseInt(val, 10);
+  return isNaN(n) || n < 1 ? fallback : n;
+}
+
 const RANKING_TOGGLE_KEYS = [
   "rankingEnabled",
   "rankLayerAiScore",
@@ -27,8 +33,8 @@ export async function GET() {
   ]);
 
   return NextResponse.json({
-    refreshIntervalMinutes: intervalVal ? parseInt(intervalVal, 10) : 5,
-    retentionDays: retentionVal ? parseInt(retentionVal, 10) : 14,
+    refreshIntervalMinutes: parseIntOrDefault(intervalVal, 5),
+    retentionDays: parseIntOrDefault(retentionVal, 14),
     ranking: rankingConfig,
   });
 }
@@ -38,7 +44,12 @@ export async function PUT(request: Request) {
   const denied = requireAdmin(session);
   if (denied) return denied;
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { refreshIntervalMinutes, retentionDays, ranking } = body as {
     refreshIntervalMinutes?: number;
     retentionDays?: number;

@@ -2,7 +2,12 @@ import { prisma } from "./prisma";
 import { getRetentionDays } from "./server-config";
 import type { Article } from "@/types";
 
-const BATCH_SIZE = 50; // 50 × 17 columns = 850 params, under SQLite's 999 limit
+const BATCH_SIZE = 50; // 50 × 19 columns = 950 params, under SQLite's 999 limit
+const SOURCE_ID_BATCH = 500; // Batch source IDs to stay under SQLite's 999 parameter limit
+
+export function safeJsonArray(str: string): string[] {
+  try { return JSON.parse(str); } catch { return []; }
+}
 
 function expiresAt(days: number): Date {
   const d = new Date();
@@ -76,6 +81,24 @@ export async function persistArticles(articles: Article[]): Promise<void> {
 export async function loadPersistedArticles(sourceIds: string[], limit?: number): Promise<Article[]> {
   if (sourceIds.length === 0) return [];
 
+  // Batch source IDs to stay under SQLite's 999 bound-parameter limit
+  if (sourceIds.length > SOURCE_ID_BATCH) {
+    const allRows: Article[] = [];
+    for (let i = 0; i < sourceIds.length; i += SOURCE_ID_BATCH) {
+      const batch = sourceIds.slice(i, i + SOURCE_ID_BATCH);
+      const rows = await prisma.article.findMany({
+        where: {
+          sourceId: { in: batch },
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { publishedAt: "desc" },
+      });
+      allRows.push(...rows.map(rowToArticle));
+    }
+    allRows.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    return limit ? allRows.slice(0, limit) : allRows;
+  }
+
   const rows = await prisma.article.findMany({
     where: {
       sourceId: { in: sourceIds },
@@ -104,13 +127,13 @@ function rowToArticle(r: {
     imageUrl: r.imageUrl,
     publishedAt: r.publishedAt.toISOString(),
     source: { id: r.sourceId, name: r.sourceName },
-    categories: JSON.parse(r.categories) as string[],
-    tags: JSON.parse(r.tags) as string[],
+    categories: safeJsonArray(r.categories),
+    tags: safeJsonArray(r.tags),
     priority: r.priority,
     paywalled: r.paywalled,
     relevanceScore: r.relevanceScore,
     _extractable: r.extractable,
-    _aiTagged: r.aiTagged || undefined,
+    _aiTagged: r.aiTagged ? true : undefined,
     _hasTimestamp: r.hasTimestamp,
   };
 }
@@ -131,6 +154,9 @@ export async function setArticleExtractable(url: string, extractable: boolean): 
  * Uses SQL LIKE on the JSON tags column for server-side filtering.
  */
 export async function loadArticlesByTag(tag: string, limit = 500): Promise<Article[]> {
+  // Validate tag slug to prevent SQL injection — only allow alphanumeric + hyphens
+  if (!/^[a-z0-9-]+$/.test(tag)) return [];
+
   const rows = await prisma.$queryRawUnsafe<Array<{
     id: string; title: string; description: string; content: string;
     url: string; imageUrl: string | null; publishedAt: string;
@@ -159,13 +185,13 @@ export async function loadArticlesByTag(tag: string, limit = 500): Promise<Artic
     imageUrl: r.imageUrl,
     publishedAt: r.publishedAt,
     source: { id: r.sourceId, name: r.sourceName },
-    categories: JSON.parse(r.categories) as string[],
-    tags: JSON.parse(r.tags) as string[],
+    categories: safeJsonArray(r.categories),
+    tags: safeJsonArray(r.tags),
     priority: r.priority,
     paywalled: !!r.paywalled,
     relevanceScore: r.relevanceScore,
     _extractable: r.extractable === null ? null : !!r.extractable,
-    _aiTagged: !!r.aiTagged || undefined,
+    _aiTagged: r.aiTagged ? true : undefined,
     _hasTimestamp: !!r.hasTimestamp,
   }));
 }
@@ -181,7 +207,7 @@ export async function updateArticleImages(
 
   await prisma.$transaction(
     updates.map((u) =>
-      prisma.article.update({
+      prisma.article.updateMany({
         where: { url: u.url },
         data: { imageUrl: u.imageUrl },
       })
@@ -211,8 +237,15 @@ export async function updateArticleAiData(
   );
 }
 
-/** @deprecated Use updateArticleAiData instead */
-export const updateArticleTags = updateArticleAiData;
+
+/**
+ * Look up a single article by ID directly from the database.
+ */
+export async function getArticleByIdFromDb(id: string): Promise<Article | null> {
+  const row = await prisma.article.findUnique({ where: { id } });
+  if (!row) return null;
+  return rowToArticle(row as Parameters<typeof rowToArticle>[0]);
+}
 
 /**
  * Delete all rows where expiresAt < now.

@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllArticles, getArticlesForSources, getSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY, isAiTaggingEnabled } from "@/lib/feeds";
+import { getAllArticles, getArticlesForSources, getAllSourcesAcrossUsers, fetchSource, getFailedSources, allSettledWithLimit, RSS_CONCURRENCY, isAiTaggingEnabled, sortArticles, deduplicateByUrl } from "@/lib/feeds";
 import { clearCache } from "@/lib/cache";
 import { getRankingConfig } from "@/lib/server-config";
-import { persistArticles, loadPersistedArticles } from "@/lib/article-db";
+import { persistArticles } from "@/lib/article-db";
 import { isSafeUrl } from "@/lib/url-validation";
 import { auth } from "@/lib/auth";
-import { isAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { tagArticlesWithAi } from "@/lib/ai-tagger";
 import { assignTags } from "@/lib/tagger";
 import { getAllTagDefinitions, getCustomTags } from "@/lib/custom-tags";
+import { AI_PROVIDERS } from "@/types";
 import type { Article, Source, AiProvider } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,25 @@ function isValidSource(s: unknown): s is Source {
   );
 }
 
+function buildArticleResponse(
+  articles: Article[],
+  maxArticles: number,
+  failedSources: { name: string; url: string; reason: string }[],
+  ranking: unknown,
+) {
+  const capped = articles.slice(0, maxArticles);
+  const lightweight = capped.map(({ content: _content, ...rest }) => ({ ...rest, content: "" }));
+  return NextResponse.json({
+    count: lightweight.length,
+    total: articles.length,
+    articles: lightweight,
+    ...(failedSources.length > 0 ? { failedSources } : {}),
+    ranking,
+  }, {
+    headers: { "Cache-Control": "private, no-cache" },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const sourceIdsParam = request.nextUrl.searchParams.get("sourceIds");
   const sourcesParam = request.nextUrl.searchParams.get("sources");
@@ -35,6 +55,10 @@ export async function GET(request: NextRequest) {
   let cacheKey: string;
 
   if (tagParam) {
+    // Validate tag slug — only allow alphanumeric + hyphens
+    if (!/^[a-z0-9-]+$/.test(tagParam)) {
+      return NextResponse.json({ error: "Invalid tag" }, { status: 400 });
+    }
     // Server-side tag filter — queries DB directly for articles with this tag.
     // Returns up to 500 most recent articles matching the tag across all sources.
     cacheKey = `articles:tag:${tagParam}`;
@@ -61,6 +85,9 @@ export async function GET(request: NextRequest) {
     // page), load directly for full results. For many sources, cap at DB level
     // to avoid loading thousands of articles.
     const ids = sourceIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    if (ids.length > 200) {
+      return NextResponse.json({ error: "Too many source IDs (max 200)" }, { status: 400 });
+    }
     cacheKey = `articles:${[...ids].sort().join(",")}`;
     const { loadPersistedArticles } = await import("@/lib/article-db");
     const { rankArticles } = await import("@/lib/ranker");
@@ -78,22 +105,9 @@ export async function GET(request: NextRequest) {
 
   console.log(`[feeds GET] Loaded ${articles.length} articles for cacheKey=${cacheKey.substring(0, 80)}`);
 
-  // Strip content field — not used on home page, saves ~60% payload
-  // Cap response to avoid multi-MB payloads that freeze the browser
   const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "0", 10);
   const maxArticles = limit > 0 ? limit : 500;
-  const capped = articles.slice(0, maxArticles);
-  const lightweight = capped.map(({ content, ...rest }) => ({ ...rest, content: "" }));
-
-  return NextResponse.json({
-    count: lightweight.length,
-    total: articles.length,
-    articles: lightweight,
-    ...(failedSources.length > 0 ? { failedSources } : {}),
-    ranking: rankingConfig,
-  }, {
-    headers: { "Cache-Control": "private, no-cache" },
-  });
+  return buildArticleResponse(articles, maxArticles, failedSources, rankingConfig);
 }
 
 export async function POST(request: NextRequest) {
@@ -113,28 +127,19 @@ export async function POST(request: NextRequest) {
         const failedSources = getFailedSources(cacheKey);
         const postRankingConfig = await getRankingConfig();
         const postLimit = typeof body.limit === "number" && body.limit > 0 ? body.limit : 500;
-        const postCapped = articles.slice(0, postLimit);
-        const postLightweight = postCapped.map(({ content, ...rest }) => ({ ...rest, content: "" }));
-        return NextResponse.json({
-          count: postLightweight.length,
-          total: articles.length,
-          articles: postLightweight,
-          ...(failedSources.length > 0 ? { failedSources } : {}),
-          ranking: postRankingConfig,
-        }, {
-          headers: { "Cache-Control": "private, no-cache" },
-        });
+        return buildArticleResponse(articles, postLimit, failedSources, postRankingConfig);
       }
     } catch {
-      // Not valid JSON or no sources — fall through to admin rescan
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+    // JSON body parsed but had no sources array — return error, don't fall through to admin rescan
+    return NextResponse.json({ error: "Missing sources array in request body" }, { status: 400 });
   }
 
   // Admin rescan flow
   const session = await auth();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = requireAdmin(session);
+  if (denied) return denied;
 
   clearCache();
 
@@ -148,6 +153,7 @@ export async function POST(request: NextRequest) {
       const send = (data: Record<string, unknown>) =>
         controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
 
+      try {
       const allArticles: Article[] = [];
       const customTags = await getCustomTags();
       const skipKeywordTags = await isAiTaggingEnabled();
@@ -170,17 +176,13 @@ export async function POST(request: NextRequest) {
       }
 
       // Deduplicate fresh articles
-      const seen = new Set<string>();
-      const unique = allArticles.filter((a) => {
-        if (seen.has(a.url)) return false;
-        seen.add(a.url);
-        return true;
-      });
+      const unique = deduplicateByUrl(allArticles);
 
       // Merge DB-only articles (rotated out of RSS but still persisted)
       try {
         const sourceIds = sources.map((s) => s.id);
-        const persisted = await loadPersistedArticles(sourceIds);
+        const { loadPersistedArticles: loadPersisted } = await import("@/lib/article-db");
+        const persisted = await loadPersisted(sourceIds);
         const rssUrls = new Set(unique.map((a) => a.url));
         const dbOnly = persisted.filter((a) => !rssUrls.has(a.url));
         // Re-apply keyword tags to DB-only articles (skip if AI tagging handles it)
@@ -194,12 +196,7 @@ export async function POST(request: NextRequest) {
         console.warn("[rescan] DB article merge failed:", err);
       }
 
-      unique.sort((a, b) => {
-        const aHasTs = a._hasTimestamp !== false;
-        const bHasTs = b._hasTimestamp !== false;
-        if (aHasTs !== bHasTs) return aHasTs ? -1 : 1;
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
+      sortArticles(unique);
 
       // AI tagging pass (if enabled) — only tag articles that haven't been AI-tagged yet
       let aiTagCount = 0;
@@ -220,7 +217,7 @@ export async function POST(request: NextRequest) {
               const tagMap = await tagArticlesWithAi({
                 articles: batch.map((a) => ({ id: a.id, title: a.title, description: a.description })),
                 allTags,
-                provider: stored.provider as AiProvider,
+                provider: (AI_PROVIDERS as readonly string[]).includes(stored.provider) ? stored.provider as AiProvider : "anthropic",
                 apiKey,
                 model: stored.model,
               });
@@ -248,7 +245,11 @@ export async function POST(request: NextRequest) {
       }
       clearCache(); // Invalidate DB-read caches so next request picks up fresh data
       send({ type: "done", completed: total, total, count: unique.length, aiTagged: aiTagCount });
-      controller.close();
+      } catch (err) {
+        send({ type: "error", message: err instanceof Error ? err.message : "Rescan failed" });
+      } finally {
+        controller.close();
+      }
     },
   });
 

@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTagDefinitions } from "@/components/TagProvider";
+import { useClickOutside } from "@/lib/useClickOutside";
 
 interface FilterBarProps {
   activeFilters: { tags: string[]; sources: string[]; date: string };
@@ -41,19 +42,8 @@ export function FilterBar({
     if (hasActiveFilters) setOpen(true);
   }, [hasActiveFilters]);
 
-  // Close tag dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (
-        tagDropdownRef.current &&
-        !tagDropdownRef.current.contains(e.target as Node)
-      ) {
-        setTagDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  const closeTagDropdown = useCallback(() => setTagDropdownOpen(false), []);
+  useClickOutside(tagDropdownRef, closeTagDropdown, tagDropdownOpen);
 
   const updateParam = useCallback(
     (key: string, value: string) => {

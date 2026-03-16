@@ -59,15 +59,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Init: read localStorage preference
   useEffect(() => {
-    const stored = localStorage.getItem("theme") as ThemePreference | null;
-    const pref = stored ?? "system";
+    const stored = localStorage.getItem("theme");
+    const validThemes: ThemePreference[] = ["light", "dark", "system"];
+    const pref = stored && validThemes.includes(stored as ThemePreference) ? stored as ThemePreference : "system";
     setPreference(pref);
     const resolved = resolveTheme(pref);
     setResolvedTheme(resolved);
     applyTheme(resolved);
 
-    const storedAccent = localStorage.getItem("accent") as AccentId | null;
-    const accentId = storedAccent ?? DEFAULT_ACCENT;
+    const storedAccent = localStorage.getItem("accent");
+    const accentId = storedAccent && getAccentPalette(storedAccent as AccentId) ? storedAccent as AccentId : DEFAULT_ACCENT;
     setAccentState(accentId);
     applyAccent(accentId, resolved);
 

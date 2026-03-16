@@ -56,7 +56,7 @@ export function useArticleFilters(articles: Article[]) {
   }, [articles, tags, sources, date]);
 
   const activeFilters = { tags, sources, date };
-  const hasActiveFilters = !!(tags.length > 0 || sources.length > 0 || date);
+  const hasActiveFilters = !!(tags.length > 0 || sources.length > 0 || (date && DATE_RANGES[date]));
 
   return { filtered, activeFilters, hasActiveFilters };
 }

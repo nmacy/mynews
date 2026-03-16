@@ -56,8 +56,8 @@ export function RescanSection() {
     }
   };
 
-  const pct = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
-  const aiPct = aiProgress ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0;
+  const pct = progress && progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+  const aiPct = aiProgress && aiProgress.total > 0 ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0;
 
   return (
     <div

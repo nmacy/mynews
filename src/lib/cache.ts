@@ -6,7 +6,6 @@ interface CacheEntry<T> {
 }
 
 const store = new Map<string, CacheEntry<unknown>>();
-const refreshing = new Set<string>();
 
 const DEFAULT_TTL = 15 * 60 * 1000; // 15 minutes fresh
 const STALE_TTL = 15 * 60 * 1000; // 15 minutes stale window after fresh
@@ -65,18 +64,6 @@ export function setCache<T>(key: string, data: T, ttl = DEFAULT_TTL): void {
     lastAccessed: now,
   });
   evictIfNeeded();
-}
-
-export function isRefreshing(key: string): boolean {
-  return refreshing.has(key);
-}
-
-export function markRefreshing(key: string): void {
-  refreshing.add(key);
-}
-
-export function unmarkRefreshing(key: string): void {
-  refreshing.delete(key);
 }
 
 export function clearCache(): void {

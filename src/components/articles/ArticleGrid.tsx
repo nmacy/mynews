@@ -50,7 +50,7 @@ export function ArticleGrid({
 
   if (articles.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-500">
+      <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
         <p className="text-lg">No articles found</p>
         <p className="text-sm mt-1">Check back later for updates</p>
       </div>

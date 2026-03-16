@@ -16,5 +16,5 @@ if (!globalForPrisma.prismaInitialized) {
   prisma
     .$executeRawUnsafe("PRAGMA journal_mode = WAL")
     .then(() => prisma.$executeRawUnsafe("PRAGMA busy_timeout = 5000"))
-    .catch(() => {});
+    .catch((err) => console.error("[prisma] PRAGMA initialization failed:", err));
 }

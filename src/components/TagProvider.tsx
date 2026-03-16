@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { TAG_DEFINITIONS, type TagDefinition } from "@/config/tags";
@@ -27,7 +26,6 @@ const TagContext = createContext<TagContextValue>({
 
 export function TagProvider({ children }: { children: React.ReactNode }) {
   const [customTags, setCustomTags] = useState<TagDefinition[]>([]);
-  const mounted = useRef(false);
 
   const fetchCustomTags = useCallback(() => {
     fetch("/api/tags/definitions")
@@ -54,7 +52,6 @@ export function TagProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
     fetchCustomTags();
   }, [fetchCustomTags]);
 

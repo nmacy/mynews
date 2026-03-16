@@ -12,11 +12,7 @@ export default async function HomePage() {
 
   return (
     <Suspense fallback={<ArticleSkeleton />}>
-      <HomeContent
-        initialArticles={[]}
-        initialSourcesKey=""
-        initialRankingConfig={initialRankingConfig}
-      />
+      <HomeContent initialRankingConfig={initialRankingConfig} />
     </Suspense>
   );
 }

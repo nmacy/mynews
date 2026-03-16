@@ -30,22 +30,19 @@ function NewsLogo() {
     <svg
       width="28"
       height="28"
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 32"
       fill="none"
       style={{ color: "var(--mn-accent)" }}
     >
-      {/* Page */}
-      <rect x="3" y="2" width="18" height="20" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-      {/* Headline bar */}
-      <rect x="6" y="5" width="12" height="2.5" rx="1" fill="currentColor" />
-      {/* Image thumbnail */}
-      <rect x="6" y="10" width="5" height="4" rx="1" fill="currentColor" opacity="0.4" />
-      {/* Text lines beside image */}
-      <line x1="13" y1="10.5" x2="18" y2="10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="13" y1="13.5" x2="17" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      {/* Body text line */}
-      <line x1="6" y1="17" x2="18" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="6" y1="19.5" x2="14" y2="19.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Rounded square background */}
+      <rect x="2" y="2" width="28" height="28" rx="7" fill="currentColor" />
+      {/* Bold "N" letterform built from geometric shapes */}
+      {/* Left vertical stroke */}
+      <rect x="8" y="8" width="4" height="16" rx="1.5" fill="white" />
+      {/* Diagonal connector */}
+      <polygon points="12,8 12,12 20,24 20,20" fill="white" />
+      {/* Right vertical stroke */}
+      <rect x="20" y="8" width="4" height="16" rx="1.5" fill="white" />
     </svg>
   );
 }

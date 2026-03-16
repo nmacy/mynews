@@ -79,7 +79,7 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   // ── Business ───────────────────────────────────────────────
   { id: "cnbc", name: "CNBC", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114", priority: 1, category: "Business" },
   { id: "marketwatch", name: "MarketWatch", url: "http://feeds.marketwatch.com/marketwatch/topstories/", priority: 2, paywalled: true, category: "Business" },
-  { id: "forbes", name: "Forbes", url: "https://www.forbes.com/innovation/feed2", priority: 2, paywalled: true, category: "Business" },
+
   { id: "business-insider", name: "Business Insider", url: "https://markets.businessinsider.com/rss/news", priority: 2, paywalled: true, category: "Business" },
   { id: "bloomberg", name: "Bloomberg", url: "https://feeds.bloomberg.com/markets/news.rss", priority: 1, paywalled: true, category: "Business" },
   { id: "wsj", name: "Wall Street Journal", url: "https://feeds.content.dowjones.io/public/rss/RSSWorldNews", priority: 1, paywalled: true, category: "Business" },

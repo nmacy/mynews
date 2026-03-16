@@ -79,6 +79,11 @@ export function SourceBar() {
   const moreRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Suppress initial render to avoid hydration mismatch —
+  // server renders with default sources, client has user's sources from localStorage
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
+
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -146,7 +151,7 @@ export function SourceBar() {
 
   // Hide on auth pages only
   if (pathname === "/login" || pathname === "/signup") return null;
-  if (groups.length === 0) return null;
+  if (!hydrated || groups.length === 0) return null;
 
   const updateSources = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());

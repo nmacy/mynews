@@ -131,9 +131,15 @@ export default function ArticlePage() {
     }
   }, [id]);
 
-  // Extract full article content
+  // Extract full article content.
+  // Skip extraction if the RSS feed already provided rich content (>= 500 chars of text),
+  // which is common for sources like Axios that include full articles in RSS.
+  const rssContentLength = (article?.content ?? "").replace(/<[^>]*>/g, "").trim().length;
+  const hasRichRssContent = rssContentLength >= 500;
+
   useEffect(() => {
     if (!article?.url) return;
+    if (hasRichRssContent) return; // RSS content is sufficient — skip extraction
 
     setExtracting(true);
     setExtractError(false);
@@ -148,7 +154,7 @@ export default function ArticlePage() {
       })
       .catch(() => setExtractError(true))
       .finally(() => setExtracting(false));
-  }, [article?.url]);
+  }, [article?.url, hasRichRssContent]);
 
   const rawContent = fullContent ?? article?.content ?? "";
   const displayContent = useMemo(

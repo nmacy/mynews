@@ -12,7 +12,15 @@ import { fetchSitemapSource } from "./sitemap-parser";
 import { prisma } from "./prisma";
 import { rankArticles } from "./ranker";
 import { getRankingConfig } from "./server-config";
+import { SOURCE_LIBRARY } from "@/config/source-library";
 import type { Article, Source, SourcesConfig } from "@/types";
+
+/** Source IDs that should auto-receive the "local-news" tag */
+const LOCAL_SOURCE_IDS = new Set(
+  SOURCE_LIBRARY
+    .filter((s) => s.category === "Chicago" || s.category === "Local")
+    .map((s) => s.id)
+);
 
 const config = sourcesConfig as SourcesConfig;
 const parser = new Parser({
@@ -25,6 +33,10 @@ const parser = new Parser({
     ],
   },
   timeout: 10000,
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+  },
 });
 
 const FAILED_SOURCES_KEY = "failed-sources";
@@ -140,6 +152,12 @@ export async function fetchSource(
       const desc = truncate(description, 300);
       const hasTimestamp = !!(item.isoDate || item.pubDate);
 
+      const tags = skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags);
+      // Auto-tag articles from Chicago/Local sources
+      if (LOCAL_SOURCE_IDS.has(source.id) && !tags.includes("local-news")) {
+        tags.push("local-news");
+      }
+
       articles.push({
         id: generateArticleId(link),
         title,
@@ -150,7 +168,7 @@ export async function fetchSource(
         publishedAt: item.isoDate ?? item.pubDate ?? new Date().toISOString(),
         source: { id: source.id, name: source.name },
         categories: [],
-        tags: skipKeywordTags ? [] : assignTags({ title, description: desc }, extraTags),
+        tags,
         priority: source.priority,
         paywalled: source.paywalled ?? false,
         relevanceScore: 5,

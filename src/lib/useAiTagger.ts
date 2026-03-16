@@ -106,51 +106,10 @@ export function useAiTagger(articles: Article[]): {
       .catch(() => setAiStatus({ enabled: false }));
   }, []);
 
-  useEffect(() => {
-    if (!aiStatus?.enabled || !aiStatus.provider || !aiStatus.model) return;
-    if (articles.length === 0) return;
-
-    const batchHash = hashIds(articles);
-    if (batchHash === lastBatchRef.current) return;
-
-    const cached = loadTagCache();
-    const uncached = articles.filter((a) => !cached[a.id]);
-
-    if (uncached.length === 0) {
-      lastBatchRef.current = batchHash;
-      setAiTags((prev) => ({ ...prev, ...cached }));
-      return;
-    }
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    setIsTagging(true);
-    setError(null);
-
-    const batchConfig = { provider: aiStatus.provider, model: aiStatus.model };
-
-    tagAllBatches(uncached, batchConfig, controller.signal)
-      .then((tags) => {
-        lastBatchRef.current = batchHash;
-        if (Object.keys(tags).length > 0) {
-          saveToTagCache(tags);
-          setAiTags((prev) => ({ ...prev, ...cached, ...tags }));
-        } else {
-          console.warn("[ai-tagger] AI returned no tags for any article");
-          setAiTags((prev) => ({ ...prev, ...cached }));
-        }
-      })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("[ai-tagger]", err);
-        setError(err instanceof Error ? err.message : "Failed to get AI tags");
-      })
-      .finally(() => setIsTagging(false));
-
-    return () => controller.abort();
-  }, [articles, aiStatus]);
+  // Client-side AI tagging is disabled — the server-side auto-tagger
+  // (instrumentation.ts) handles tagging during background refresh and
+  // persists results to the DB. Client-side tagging was causing excessive
+  // API usage (thousands of redundant calls per day).
 
   const merged = useMemo(
     () =>

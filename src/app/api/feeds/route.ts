@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
       });
 
-      // AI tagging pass (if enabled)
+      // AI tagging pass (if enabled) — only tag articles that haven't been AI-tagged yet
       let aiTagCount = 0;
       try {
         const stored = await prisma.serverApiKey.findFirst({ where: { enabled: true } });
@@ -211,10 +211,11 @@ export async function POST(request: NextRequest) {
           const allTags = allTagDefs.map((t) => ({ slug: t.slug, label: t.label }));
           const batchSize = 20;
 
-          send({ type: "ai-tagging", total: unique.length });
+          const untagged = unique.filter((a) => !a._aiTagged);
+          send({ type: "ai-tagging", total: untagged.length });
 
-          for (let i = 0; i < unique.length; i += batchSize) {
-            const batch = unique.slice(i, i + batchSize);
+          for (let i = 0; i < untagged.length; i += batchSize) {
+            const batch = untagged.slice(i, i + batchSize);
             try {
               const tagMap = await tagArticlesWithAi({
                 articles: batch.map((a) => ({ id: a.id, title: a.title, description: a.description })),
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
             } catch (err) {
               console.warn(`[rescan] AI batch ${i / batchSize + 1} failed:`, err);
             }
-            send({ type: "ai-progress", completed: Math.min(i + batchSize, unique.length), total: unique.length });
+            send({ type: "ai-progress", completed: Math.min(i + batchSize, untagged.length), total: untagged.length });
           }
         }
       } catch (err) {

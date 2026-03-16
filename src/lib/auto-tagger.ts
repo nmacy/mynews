@@ -7,9 +7,9 @@ import { updateArticleAiData } from "@/lib/article-db";
 import { setCache } from "@/lib/cache";
 import type { Article, AiProvider } from "@/types";
 
-const AI_TAG_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
-const TAG_DISCOVERY_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
-const MAX_UNTAGGED_PER_RUN = 100;
+const AI_TAG_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const TAG_DISCOVERY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_UNTAGGED_PER_RUN = 40;
 const BATCH_SIZE = 20;
 
 let lastAiTagRun = 0;

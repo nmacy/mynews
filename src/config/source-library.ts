@@ -10,6 +10,8 @@ export const SOURCE_CATEGORIES = [
   "Entertainment",
   "Gaming",
   "Health",
+  "Chicago",
+  "Local",
 ] as const;
 
 export const SOURCE_LIBRARY: LibrarySource[] = [
@@ -125,6 +127,23 @@ export const SOURCE_LIBRARY: LibrarySource[] = [
   { id: "medical-news-today", name: "Medical News Today", url: "https://www.medicalnewstoday.com/news-1.xml", priority: 2, type: "sitemap", category: "Health" },
   { id: "healthline", name: "Healthline", url: "https://www.healthline.com/rss/health-news", priority: 3, category: "Health" },
   { id: "bbc-health", name: "BBC Health", url: "https://feeds.bbci.co.uk/news/health/rss.xml", priority: 2, category: "Health" },
+
+  // ── Chicago ───────────────────────────────────────────────
+  { id: "wbez-chicago", name: "WBEZ Chicago", url: "https://www.wbez.org/rss/index.xml", priority: 1, category: "Chicago" },
+  { id: "chicago-sun-times", name: "Chicago Sun-Times", url: "https://chicago.suntimes.com/rss/index.xml", priority: 1, category: "Chicago" },
+  { id: "abc7-chicago", name: "ABC 7 Chicago", url: "https://abc7chicago.com/feed/", priority: 1, category: "Chicago" },
+  { id: "block-club-chicago", name: "Block Club Chicago", url: "https://blockclubchicago.org/feed/", priority: 2, category: "Chicago" },
+  { id: "wgn-tv", name: "WGN TV", url: "https://wgntv.com/feed/", priority: 2, category: "Chicago" },
+  { id: "fox32-chicago", name: "FOX 32 Chicago", url: "https://www.fox32chicago.com/rss/category/apps", priority: 2, category: "Chicago" },
+  { id: "chicago-reader", name: "Chicago Reader", url: "https://chicagoreader.com/feed/", priority: 3, category: "Chicago" },
+  { id: "chicago-tribune-gn", name: "Chicago Tribune (via Google)", url: "https://news.google.com/rss/search?q=site:chicagotribune.com&hl=en-US&gl=US&ceid=US:en", priority: 1, paywalled: true, category: "Chicago" },
+  { id: "daily-herald-gn", name: "Daily Herald (via Google)", url: "https://news.google.com/rss/search?q=site:dailyherald.com&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Chicago" },
+  { id: "google-news-chicago", name: "Google News Chicago", url: "https://news.google.com/rss/search?q=Chicago+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Chicago" },
+
+  // ── Local (DuPage County / Western Suburbs) ──────────────
+  { id: "google-news-dupage", name: "Google News DuPage County", url: "https://news.google.com/rss/search?q=DuPage+County+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Local" },
+  { id: "google-news-villa-park", name: "Google News Villa Park", url: "https://news.google.com/rss/search?q=Villa+Park+Illinois&hl=en-US&gl=US&ceid=US:en", priority: 2, category: "Local" },
+  { id: "patch-elmhurst", name: "Patch Elmhurst", url: "https://patch.com/feeds/illinois/elmhurst", priority: 3, category: "Local" },
 
   // ── Other ──────────────────────────────────────────────────
   { id: "the-drive", name: "The Drive", url: "https://www.thedrive.com/feed", priority: 3, category: "Other" },

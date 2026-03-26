@@ -5,9 +5,13 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTagDefinitions } from "@/components/TagProvider";
 import { useClickOutside } from "@/lib/useClickOutside";
 
+export type SortMode = "rating" | "time";
+
 interface FilterBarProps {
   activeFilters: { tags: string[]; sources: string[]; date: string };
   hasActiveFilters: boolean;
+  sortMode: SortMode;
+  onSortChange: (mode: SortMode) => void;
 }
 
 const DATE_OPTIONS = [
@@ -28,6 +32,8 @@ const selectStyle: React.CSSProperties = {
 export function FilterBar({
   activeFilters,
   hasActiveFilters,
+  sortMode,
+  onSortChange,
 }: FilterBarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -97,42 +103,78 @@ export function FilterBar({
 
   return (
     <div className="mb-6">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg"
-        style={{
-          color: "var(--mn-muted)",
-          backgroundColor: hasActiveFilters ? "var(--mn-card)" : "transparent",
-          border: hasActiveFilters
-            ? "1px solid var(--mn-border)"
-            : "1px solid transparent",
-        }}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg"
+          style={{
+            color: "var(--mn-muted)",
+            backgroundColor: hasActiveFilters ? "var(--mn-card)" : "transparent",
+            border: hasActiveFilters
+              ? "1px solid var(--mn-border)"
+              : "1px solid transparent",
+          }}
         >
-          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-        </svg>
-        Filters
-        {filterCount > 0 && (
-          <span
-            className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full"
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+          </svg>
+          Filters
+          {filterCount > 0 && (
+            <span
+              className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full"
+              style={{
+                backgroundColor: "var(--mn-link)",
+                color: "var(--mn-bg)",
+              }}
+            >
+              {filterCount}
+            </span>
+          )}
+        </button>
+
+        {/* Sort toggle */}
+        <div
+          className="flex items-center rounded-lg overflow-hidden text-sm"
+          style={{ border: "1px solid var(--mn-border)" }}
+        >
+          <button
+            onClick={() => onSortChange("rating")}
+            className="flex items-center gap-1 px-3 py-1.5 transition-colors"
             style={{
-              backgroundColor: "var(--mn-link)",
-              color: "var(--mn-bg)",
+              backgroundColor: sortMode === "rating" ? "var(--mn-accent)" : "var(--mn-card)",
+              color: sortMode === "rating" ? "white" : "var(--mn-muted)",
             }}
           >
-            {filterCount}
-          </span>
-        )}
-      </button>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            Rating
+          </button>
+          <button
+            onClick={() => onSortChange("time")}
+            className="flex items-center gap-1 px-3 py-1.5 transition-colors"
+            style={{
+              backgroundColor: sortMode === "time" ? "var(--mn-accent)" : "var(--mn-card)",
+              color: sortMode === "time" ? "white" : "var(--mn-muted)",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            Latest
+          </button>
+        </div>
+      </div>
 
       {open && (
         <div

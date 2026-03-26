@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useConfig } from "@/components/ConfigProvider";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
-import { FilterBar } from "@/components/ui/FilterBar";
+import { FilterBar, type SortMode } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
 import { useScrollRestore } from "@/lib/useScrollRestore";
@@ -53,8 +53,25 @@ interface HomeContentProps {
 
 export function HomeContent({ initialRankingConfig }: HomeContentProps) {
   const { config } = useConfig();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
+  const sortMode: SortMode = searchParams.get("sort") === "time" ? "time" : "rating";
+
+  const handleSortChange = useCallback(
+    (mode: SortMode) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (mode === "rating") {
+        params.delete("sort");
+      } else {
+        params.set("sort", mode);
+      }
+      const qs = params.toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    },
+    [router, pathname, searchParams]
+  );
 
   // When the source bar filters to specific sources, fetch just those from the API
   // instead of filtering the capped home page dataset
@@ -162,15 +179,24 @@ export function HomeContent({ initialRankingConfig }: HomeContentProps) {
     return copy;
   }, [taggedArticles, rankingConfig, config.featuredTags]);
 
+  const sortedArticles = useMemo(() => {
+    if (sortMode === "time") {
+      const copy = [...rankedArticles];
+      copy.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      return copy;
+    }
+    return rankedArticles;
+  }, [rankedArticles, sortMode]);
+
   const searchFiltered = useMemo(() => {
-    if (!searchQuery) return rankedArticles;
+    if (!searchQuery) return sortedArticles;
     const q = searchQuery.toLowerCase();
-    return rankedArticles.filter(
+    return sortedArticles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
         (a.description ?? "").toLowerCase().includes(q)
     );
-  }, [rankedArticles, searchQuery]);
+  }, [sortedArticles, searchQuery]);
 
   const { filtered, activeFilters, hasActiveFilters } =
     useArticleFilters(searchFiltered);
@@ -212,6 +238,8 @@ export function HomeContent({ initialRankingConfig }: HomeContentProps) {
       <FilterBar
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
+        sortMode={sortMode}
+        onSortChange={handleSortChange}
       />
       {filtered.length === 0 && isFiltered ? (
         <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>

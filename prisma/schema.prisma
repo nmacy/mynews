@@ -124,4 +124,5 @@ model Article {
   @@index([expiresAt])
   @@index([aiTagged])
   @@index([sourceId, expiresAt, publishedAt])
+  @@index([expiresAt, publishedAt])
 }

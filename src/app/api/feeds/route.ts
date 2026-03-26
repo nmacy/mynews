@@ -27,14 +27,45 @@ function isValidSource(s: unknown): s is Source {
   );
 }
 
+function computeETag(articles: Article[], count: number): string {
+  // Lightweight ETag: count + newest article ID + oldest article ID
+  const first = articles[0];
+  const last = articles[count - 1];
+  const key = `${count}:${first?.id ?? ""}:${first?.publishedAt ?? ""}:${last?.id ?? ""}`;
+  // Simple hash using string char codes
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  }
+  return `"${(hash >>> 0).toString(36)}"`;
+}
+
 function buildArticleResponse(
   articles: Article[],
   maxArticles: number,
   failedSources: { name: string; url: string; reason: string }[],
   ranking: unknown,
+  request?: NextRequest,
 ) {
   const capped = articles.slice(0, maxArticles);
   const lightweight = capped.map(({ content: _content, ...rest }) => ({ ...rest, content: "" }));
+
+  const etag = computeETag(articles, lightweight.length);
+
+  // Return 304 if client already has this version
+  if (request) {
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      });
+    }
+  }
+
   return NextResponse.json({
     count: lightweight.length,
     total: articles.length,
@@ -42,7 +73,10 @@ function buildArticleResponse(
     ...(failedSources.length > 0 ? { failedSources } : {}),
     ranking,
   }, {
-    headers: { "Cache-Control": "private, no-cache" },
+    headers: {
+      "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+      ETag: etag,
+    },
   });
 }
 
@@ -107,7 +141,7 @@ export async function GET(request: NextRequest) {
 
   const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "0", 10);
   const maxArticles = limit > 0 ? limit : 500;
-  return buildArticleResponse(articles, maxArticles, failedSources, rankingConfig);
+  return buildArticleResponse(articles, maxArticles, failedSources, rankingConfig, request);
 }
 
 export async function POST(request: NextRequest) {
@@ -127,7 +161,7 @@ export async function POST(request: NextRequest) {
         const failedSources = getFailedSources(cacheKey);
         const postRankingConfig = await getRankingConfig();
         const postLimit = typeof body.limit === "number" && body.limit > 0 ? body.limit : 500;
-        return buildArticleResponse(articles, postLimit, failedSources, postRankingConfig);
+        return buildArticleResponse(articles, postLimit, failedSources, postRankingConfig, request);
       }
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });

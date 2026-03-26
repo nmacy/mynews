@@ -8,6 +8,7 @@ export async function callAnthropic(
 ): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: AbortSignal.timeout(30000),
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
@@ -37,6 +38,7 @@ export async function callOpenAiCompatible(
 ): Promise<string> {
   const res = await fetch(endpoint, {
     method: "POST",
+    signal: AbortSignal.timeout(30000),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -68,6 +70,7 @@ export async function callGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res = await fetch(url, {
     method: "POST",
+    signal: AbortSignal.timeout(30000),
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey,

@@ -55,13 +55,33 @@ const RANKING_KEYS = {
 } as const;
 
 export async function getRankingConfig(): Promise<RankingConfig> {
-  const values = await Promise.all(
-    Object.entries(RANKING_KEYS).map(async ([key, defaultVal]) => {
-      const val = await getServerConfig(key);
-      return [key, val ?? defaultVal] as const;
-    })
-  );
-  const map = Object.fromEntries(values);
+  const keys = Object.keys(RANKING_KEYS);
+
+  // Check if all keys are cached and fresh
+  const now = Date.now();
+  const allCached = keys.every((k) => {
+    const c = cache.get(k);
+    return c && now - c.fetchedAt < CACHE_TTL_MS;
+  });
+
+  if (!allCached) {
+    // Batch fetch all ranking keys in a single query
+    const placeholders = keys.map(() => "?").join(", ");
+    const rows = await prisma.$queryRawUnsafe<{ key: string; value: string }[]>(
+      `SELECT key, value FROM ServerConfig WHERE key IN (${placeholders})`,
+      ...keys
+    );
+    const fetchedAt = Date.now();
+    for (const row of rows) {
+      cache.set(row.key, { value: row.value, fetchedAt });
+    }
+  }
+
+  const map: Record<string, string> = {};
+  for (const [key, defaultVal] of Object.entries(RANKING_KEYS)) {
+    map[key] = cache.get(key)?.value ?? defaultVal;
+  }
+
   return {
     enabled: map.rankingEnabled === "true",
     layerAiScore: map.rankLayerAiScore === "true",

@@ -76,8 +76,9 @@ export async function probeNewArticles(limit = BATCH_SIZE): Promise<number> {
 
   if (articles.length === 0) return 0;
 
-  let updated = 0;
   const urls = articles.map((a) => a.url);
+  const extractableUrls: string[] = [];
+  const nonExtractableUrls: string[] = [];
 
   // Process in concurrent batches
   for (let i = 0; i < urls.length; i += PROBE_CONCURRENCY) {
@@ -91,16 +92,37 @@ export async function probeNewArticles(limit = BATCH_SIZE): Promise<number> {
 
     for (const result of results) {
       if (result.status !== "fulfilled") continue;
-      const { url, extractable } = result.value;
-      try {
-        await prisma.$executeRawUnsafe(
-          "UPDATE Article SET extractable = ? WHERE url = ?",
-          extractable ? 1 : 0,
-          url
-        );
-        updated++;
-      } catch {
-        // Skip individual failures
+      if (result.value.extractable) {
+        extractableUrls.push(result.value.url);
+      } else {
+        nonExtractableUrls.push(result.value.url);
+      }
+    }
+  }
+
+  // Batch update: two statements instead of N individual updates
+  let updated = 0;
+  for (const [value, urlList] of [[1, extractableUrls], [0, nonExtractableUrls]] as const) {
+    if (urlList.length === 0) continue;
+    const placeholders = urlList.map(() => "?").join(", ");
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE Article SET extractable = ? WHERE url IN (${placeholders})`,
+        value,
+        ...urlList
+      );
+      updated += urlList.length;
+    } catch {
+      // Fall back to individual updates if batch fails
+      for (const url of urlList) {
+        try {
+          await prisma.$executeRawUnsafe(
+            "UPDATE Article SET extractable = ? WHERE url = ?",
+            value,
+            url
+          );
+          updated++;
+        } catch { /* skip */ }
       }
     }
   }

@@ -5,6 +5,14 @@ import type { Article } from "@/types";
 const BATCH_SIZE = 50; // 50 × 19 columns = 950 params, under SQLite's 999 limit
 const SOURCE_ID_BATCH = 500; // Batch source IDs to stay under SQLite's 999 parameter limit
 
+/** Select clause that excludes the heavy `content` column for list queries. */
+const articleListSelect = {
+  id: true, title: true, description: true, url: true, imageUrl: true,
+  publishedAt: true, sourceId: true, sourceName: true, categories: true,
+  tags: true, priority: true, paywalled: true, relevanceScore: true,
+  extractable: true, aiTagged: true, hasTimestamp: true,
+} as const;
+
 export function safeJsonArray(str: string): string[] {
   try { return JSON.parse(str); } catch { return []; }
 }
@@ -87,6 +95,7 @@ export async function loadPersistedArticles(sourceIds: string[], limit?: number)
     for (let i = 0; i < sourceIds.length; i += SOURCE_ID_BATCH) {
       const batch = sourceIds.slice(i, i + SOURCE_ID_BATCH);
       const rows = await prisma.article.findMany({
+        select: articleListSelect,
         where: {
           sourceId: { in: batch },
           expiresAt: { gt: new Date() },
@@ -100,6 +109,7 @@ export async function loadPersistedArticles(sourceIds: string[], limit?: number)
   }
 
   const rows = await prisma.article.findMany({
+    select: articleListSelect,
     where: {
       sourceId: { in: sourceIds },
       expiresAt: { gt: new Date() },
@@ -112,7 +122,7 @@ export async function loadPersistedArticles(sourceIds: string[], limit?: number)
 }
 
 function rowToArticle(r: {
-  id: string; title: string; description: string; content: string;
+  id: string; title: string; description: string; content?: string;
   url: string; imageUrl: string | null; publishedAt: Date;
   sourceId: string; sourceName: string; categories: string; tags: string;
   priority: number; paywalled: boolean; relevanceScore: number;
@@ -122,7 +132,7 @@ function rowToArticle(r: {
     id: r.id,
     title: r.title,
     description: r.description,
-    content: r.content,
+    content: r.content ?? "",
     url: r.url,
     imageUrl: r.imageUrl,
     publishedAt: r.publishedAt.toISOString(),
@@ -158,13 +168,13 @@ export async function loadArticlesByTag(tag: string, limit = 500): Promise<Artic
   if (!/^[a-z0-9-]+$/.test(tag)) return [];
 
   const rows = await prisma.$queryRawUnsafe<Array<{
-    id: string; title: string; description: string; content: string;
+    id: string; title: string; description: string;
     url: string; imageUrl: string | null; publishedAt: string;
     sourceId: string; sourceName: string; categories: string; tags: string;
     priority: number; paywalled: number; relevanceScore: number;
     extractable: number | null; aiTagged: number; hasTimestamp: number;
   }>>(
-    `SELECT id, title, description, content, url, imageUrl, publishedAt,
+    `SELECT id, title, description, url, imageUrl, publishedAt,
             sourceId, sourceName, categories, tags, priority, paywalled,
             relevanceScore, extractable, aiTagged, hasTimestamp
      FROM Article
@@ -180,7 +190,7 @@ export async function loadArticlesByTag(tag: string, limit = 500): Promise<Artic
     id: r.id,
     title: r.title,
     description: r.description,
-    content: r.content,
+    content: "",
     url: r.url,
     imageUrl: r.imageUrl,
     publishedAt: r.publishedAt,
@@ -217,24 +227,45 @@ export async function updateArticleImages(
 
 /**
  * Update tags, aiTagged, and optionally relevanceScore for specific articles by ID.
+ * Uses batched raw SQL with CASE/WHEN for performance.
  */
 export async function updateArticleAiData(
   updates: { id: string; tags: string[]; relevanceScore?: number }[]
 ): Promise<void> {
   if (updates.length === 0) return;
 
-  await prisma.$transaction(
-    updates.map((u) =>
-      prisma.article.update({
-        where: { id: u.id },
-        data: {
-          tags: JSON.stringify(u.tags),
-          aiTagged: true,
-          ...(u.relevanceScore !== undefined ? { relevanceScore: u.relevanceScore } : {}),
-        },
-      })
-    )
-  );
+  // Batch to stay well under SQLite's 999 parameter limit.
+  // Each article uses 3 params (id for CASE, tags value, relevanceScore value) + 1 for IN list.
+  const AI_DATA_BATCH = 200;
+
+  for (let i = 0; i < updates.length; i += AI_DATA_BATCH) {
+    const batch = updates.slice(i, i + AI_DATA_BATCH);
+    const ids = batch.map((u) => u.id);
+    const tagsCases = batch.map(() => "WHEN id = ? THEN ?").join(" ");
+    const scoreCases = batch.map(() => "WHEN id = ? THEN ?").join(" ");
+    const placeholders = ids.map(() => "?").join(", ");
+
+    const params: unknown[] = [];
+    // tags CASE params
+    for (const u of batch) {
+      params.push(u.id, JSON.stringify(u.tags));
+    }
+    // relevanceScore CASE params
+    for (const u of batch) {
+      params.push(u.id, u.relevanceScore ?? 5);
+    }
+    // IN clause params
+    params.push(...ids);
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE Article SET
+        tags = CASE ${tagsCases} ELSE tags END,
+        aiTagged = 1,
+        relevanceScore = CASE ${scoreCases} ELSE relevanceScore END
+      WHERE id IN (${placeholders})`,
+      ...params
+    );
+  }
 }
 
 

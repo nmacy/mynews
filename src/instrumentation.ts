@@ -6,6 +6,10 @@ export async function register() {
   const { installLogInterceptors } = await import("@/lib/logger");
   installLogInterceptors();
 
+  // Ensure SQLite PRAGMAs are applied before any DB operations
+  const { prismaReady } = await import("@/lib/prisma");
+  await prismaReady;
+
   let consecutiveFailures = 0;
   const MAX_BACKOFF_MS = 30 * 60 * 1000; // 30 minutes
 

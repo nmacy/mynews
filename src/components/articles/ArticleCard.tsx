@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArticleImage } from "./ArticleImage";
@@ -9,7 +10,7 @@ import { TimeAgo } from "@/components/ui/TimeAgo";
 import { storeArticle } from "@/lib/article-store";
 import type { Article } from "@/types";
 
-export function ArticleCard({ article, debugScores }: { article: Article; debugScores?: boolean }) {
+export const ArticleCard = memo(function ArticleCard({ article, debugScores }: { article: Article; debugScores?: boolean }) {
   const router = useRouter();
 
   return (
@@ -90,4 +91,4 @@ export function ArticleCard({ article, debugScores }: { article: Article; debugS
       </div>
     </Link>
   );
-}
+}, (prev, next) => prev.article.id === next.article.id && prev.debugScores === next.debugScores && prev.article._rankScore === next.article._rankScore);

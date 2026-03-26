@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams, useRouter, usePathname } from "next/navigation";
 import { HeroArticle } from "@/components/articles/HeroArticle";
 import { ArticleGrid } from "@/components/articles/ArticleGrid";
-import { FilterBar } from "@/components/ui/FilterBar";
+import { FilterBar, type SortMode } from "@/components/ui/FilterBar";
 import { useAiTagger } from "@/lib/useAiTagger";
 import { useArticleFilters } from "@/lib/useArticleFilters";
 import { useScrollRestore } from "@/lib/useScrollRestore";
@@ -38,6 +38,25 @@ function ArticleSkeleton() {
 function TagContent() {
   const { slug } = useParams<{ slug: string }>();
   const tagMap = useTagMap();
+
+  const router = useRouter();
+  const pathnameFull = usePathname();
+  const searchParamsFull = useSearchParams();
+  const sortMode: SortMode = searchParamsFull.get("sort") === "time" ? "time" : "rating";
+
+  const handleSortChange = useCallback(
+    (mode: SortMode) => {
+      const params = new URLSearchParams(searchParamsFull.toString());
+      if (mode === "rating") {
+        params.delete("sort");
+      } else {
+        params.set("sort", mode);
+      }
+      const qs = params.toString();
+      router.push(qs ? `${pathnameFull}?${qs}` : pathnameFull);
+    },
+    [router, pathnameFull, searchParamsFull]
+  );
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,8 +102,17 @@ function TagContent() {
 
   const { articles: taggedArticles } = useAiTagger(articles);
 
+  const sortedArticles = useMemo(() => {
+    if (sortMode === "time") {
+      const copy = [...taggedArticles];
+      copy.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      return copy;
+    }
+    return taggedArticles;
+  }, [taggedArticles, sortMode]);
+
   const { filtered, activeFilters, hasActiveFilters } =
-    useArticleFilters(taggedArticles);
+    useArticleFilters(sortedArticles);
 
   if (loading) return <ArticleSkeleton />;
 
@@ -123,6 +151,8 @@ function TagContent() {
       <FilterBar
         activeFilters={activeFilters}
         hasActiveFilters={hasActiveFilters}
+        sortMode={sortMode}
+        onSortChange={handleSortChange}
       />
       {filtered.length === 0 ? (
         <div className="text-center py-16" style={{ color: "var(--mn-muted)" }}>
